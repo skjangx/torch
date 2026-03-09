@@ -171,7 +171,8 @@ final class MarkdownDragPerformanceUITests: XCTestCase {
     private func latestLifecycleSnapshot(for panelId: String) -> MarkdownDragSnapshot? {
         guard let response = v2Call("debug.panel_lifecycle"),
               let result = response["result"] as? [String: Any],
-              let desired = result["desired"] as? [String: Any],
+              let snapshot = result["snapshot"] as? [String: Any],
+              let desired = snapshot["desired"] as? [String: Any],
               let plan = desired["documentExecutorPlan"] as? [String: Any],
               let records = plan["records"] as? [[String: Any]] else {
             return nil
@@ -184,10 +185,11 @@ final class MarkdownDragPerformanceUITests: XCTestCase {
 
     private func latestLifecycleSnapshot() -> MarkdownDragWorkspaceSnapshot? {
         guard let response = v2Call("debug.panel_lifecycle"),
-              let result = response["result"] as? [String: Any] else {
+              let result = response["result"] as? [String: Any],
+              let snapshot = result["snapshot"] as? [String: Any] else {
             return nil
         }
-        return MarkdownDragWorkspaceSnapshot(result: result)
+        return MarkdownDragWorkspaceSnapshot(result: snapshot)
     }
 
     private func waitForCurrentWorkspaceId(timeout: TimeInterval) -> String? {

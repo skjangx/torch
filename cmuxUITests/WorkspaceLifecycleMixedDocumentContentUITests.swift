@@ -214,10 +214,11 @@ final class WorkspaceLifecycleMixedDocumentContentUITests: XCTestCase {
 
     private func latestLifecycleSnapshot() -> MixedDocumentSnapshot? {
         guard let response = v2Call("debug.panel_lifecycle"),
-              let result = response["result"] as? [String: Any] else {
+              let result = response["result"] as? [String: Any],
+              let snapshot = result["snapshot"] as? [String: Any] else {
             return nil
         }
-        return MixedDocumentSnapshot(result: result)
+        return MixedDocumentSnapshot(result: snapshot)
     }
 
     private func waitForCurrentWorkspaceId(timeout: TimeInterval) -> String? {

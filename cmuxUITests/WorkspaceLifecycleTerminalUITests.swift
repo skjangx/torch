@@ -250,10 +250,11 @@ final class WorkspaceLifecycleTerminalUITests: XCTestCase {
 
     private func latestLifecycleSnapshot() -> LifecycleSnapshot? {
         guard let response = v2Call("debug.panel_lifecycle"),
-              let result = response["result"] as? [String: Any] else {
+              let result = response["result"] as? [String: Any],
+              let snapshot = result["snapshot"] as? [String: Any] else {
             return nil
         }
-        return LifecycleSnapshot(result: result)
+        return LifecycleSnapshot(result: snapshot)
     }
 
     private func waitForCurrentWorkspaceId(timeout: TimeInterval) -> String? {

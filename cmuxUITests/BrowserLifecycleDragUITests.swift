@@ -214,10 +214,11 @@ final class BrowserLifecycleDragUITests: XCTestCase {
 
     private func latestLifecycleSnapshot() -> BrowserLifecycleSnapshot? {
         guard let response = v2Call("debug.panel_lifecycle"),
-              let result = response["result"] as? [String: Any] else {
+              let result = response["result"] as? [String: Any],
+              let snapshot = result["snapshot"] as? [String: Any] else {
             return nil
         }
-        return BrowserLifecycleSnapshot(result: result)
+        return BrowserLifecycleSnapshot(result: snapshot)
     }
 
     private func waitForCurrentWorkspaceId(timeout: TimeInterval) -> String? {
