@@ -4926,6 +4926,102 @@ final class WorkspaceTerminalFocusRecoveryTests: XCTestCase {
             "Expected non-split inactive terminals to resign first responder normally"
         )
     }
+
+    func testProgrammaticSplitSelectionKeepsSourceActiveUntilReplacementActuallyBecomesFirstResponder() {
+        let appDelegate = AppDelegate.shared ?? AppDelegate()
+        let manager = TabManager()
+        let originalTabManager = appDelegate.tabManager
+        appDelegate.tabManager = manager
+        defer { appDelegate.tabManager = originalTabManager }
+
+        guard let workspace = manager.selectedWorkspace,
+              let leftPanelId = workspace.focusedPanelId,
+              let leftPanel = workspace.terminalPanel(for: leftPanelId),
+              let rightPanel = workspace.newTerminalSplit(from: leftPanelId, orientation: .horizontal) else {
+            XCTFail("Expected split terminal panels")
+            return
+        }
+
+        let window = makeWindow()
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        leftPanel.hostedView.frame = NSRect(x: 0, y: 0, width: 180, height: 220)
+        rightPanel.hostedView.frame = NSRect(x: 180, y: 0, width: 0, height: 0)
+        leftPanel.hostedView.setVisibleInUI(true)
+        rightPanel.hostedView.setVisibleInUI(true)
+        contentView.addSubview(leftPanel.hostedView)
+        contentView.addSubview(rightPanel.hostedView)
+
+        window.makeKeyAndOrderFront(nil)
+        window.displayIfNeeded()
+        contentView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        workspace.focusPanel(leftPanel.id)
+        leftPanel.surface.setFocus(true)
+        leftPanel.hostedView.setActive(true)
+        rightPanel.surface.setFocus(false)
+        rightPanel.hostedView.setActive(false)
+        guard let leftSurfaceView = surfaceView(in: leftPanel.hostedView) else {
+            XCTFail("Expected source terminal surface view")
+            return
+        }
+        XCTAssertTrue(window.makeFirstResponder(leftSurfaceView))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        XCTAssertTrue(
+            leftPanel.hostedView.isSurfaceViewFirstResponder(),
+            "Expected source pane to own first responder before the split handoff"
+        )
+
+        var focusedSurfaceIds: [UUID] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .ghosttyDidFocusSurface,
+            object: nil,
+            queue: nil
+        ) { notification in
+            guard let surfaceId = notification.userInfo?[GhosttyNotificationKey.surfaceId] as? UUID else { return }
+            focusedSurfaceIds.append(surfaceId)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        leftPanel.hostedView.suppressReparentFocus()
+        defer { leftPanel.hostedView.clearSuppressReparentFocus() }
+        workspace.focusPanel(rightPanel.id, previousHostedView: leftPanel.hostedView)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+
+        XCTAssertTrue(
+            leftPanel.hostedView.isSurfaceViewFirstResponder(),
+            "Expected split handoff to keep first responder on the source pane until the replacement pane can take focus"
+        )
+        XCTAssertFalse(
+            rightPanel.hostedView.isSurfaceViewFirstResponder(),
+            "Expected replacement pane to wait for usable geometry before taking first responder"
+        )
+        XCTAssertFalse(
+            focusedSurfaceIds.contains(rightPanel.id),
+            "Expected split handoff to avoid publishing focus completion before the replacement pane actually becomes first responder"
+        )
+
+        rightPanel.hostedView.frame = NSRect(x: 180, y: 0, width: 180, height: 220)
+        contentView.layoutSubtreeIfNeeded()
+        rightPanel.hostedView.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.10))
+
+        XCTAssertTrue(
+            rightPanel.hostedView.isSurfaceViewFirstResponder(),
+            "Expected replacement pane to become first responder once it has usable geometry"
+        )
+        XCTAssertTrue(
+            focusedSurfaceIds.contains(rightPanel.id),
+            "Expected focus completion to publish once the replacement pane becomes first responder"
+        )
+    }
 }
 
 @MainActor
