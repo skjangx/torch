@@ -2623,6 +2623,7 @@ final class BrowserDeveloperToolsVisibilityPersistenceTests: XCTestCase {
         let representable = WebViewRepresentable(
             panel: panel,
             paneId: paneId,
+            reattachToken: 0,
             shouldAttachWebView: true,
             useLocalInlineHosting: false,
             shouldFocusWebView: false,
@@ -2665,6 +2666,7 @@ final class BrowserDeveloperToolsVisibilityPersistenceTests: XCTestCase {
         let representable = WebViewRepresentable(
             panel: panel,
             paneId: paneId,
+            reattachToken: 0,
             shouldAttachWebView: true,
             useLocalInlineHosting: false,
             shouldFocusWebView: false,
@@ -2726,6 +2728,7 @@ final class BrowserDeveloperToolsVisibilityPersistenceTests: XCTestCase {
         let representable = WebViewRepresentable(
             panel: panel,
             paneId: paneId,
+            reattachToken: 0,
             shouldAttachWebView: false,
             useLocalInlineHosting: true,
             shouldFocusWebView: false,
@@ -2809,6 +2812,7 @@ final class BrowserDeveloperToolsVisibilityPersistenceTests: XCTestCase {
         let representable = WebViewRepresentable(
             panel: panel,
             paneId: paneId,
+            reattachToken: 0,
             shouldAttachWebView: false,
             useLocalInlineHosting: true,
             shouldFocusWebView: false,
@@ -5383,6 +5387,51 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
             workspace.focusedPanelId,
             originalFocusedPanelId,
             "Expected non-focus browser split to preserve pre-split focus"
+        )
+    }
+
+    func testMovedBrowserTabRequestsViewReattachRefresh() {
+        let workspace = Workspace()
+        guard let originalFocusedPanelId = workspace.focusedPanelId,
+              let originalPaneId = workspace.paneId(forPanelId: originalFocusedPanelId) else {
+            XCTFail("Expected initial focused panel and pane")
+            return
+        }
+
+        guard let browserSplitPanel = workspace.newBrowserSplit(
+            from: originalFocusedPanelId,
+            orientation: .horizontal,
+            focus: true
+        ) else {
+            XCTFail("Expected browser split panel to be created")
+            return
+        }
+
+        guard let browserTabId = workspace.surfaceIdFromPanelId(browserSplitPanel.id),
+              let browserPaneId = workspace.paneId(forPanelId: browserSplitPanel.id) else {
+            XCTFail("Expected browser split tab and pane mapping")
+            return
+        }
+
+        XCTAssertNotEqual(browserPaneId, originalPaneId, "Expected browser split to land in a different pane")
+
+        let initialReattachToken = browserSplitPanel.viewReattachToken
+        XCTAssertTrue(
+            workspace.bonsplitController.moveTab(browserTabId, toPane: originalPaneId),
+            "Expected browser tab move to succeed"
+        )
+
+        drainMainQueue()
+
+        XCTAssertGreaterThan(
+            browserSplitPanel.viewReattachToken,
+            initialReattachToken,
+            "Moving a browser tab should force a follow-up representable update so detached web views can reattach"
+        )
+        XCTAssertEqual(
+            workspace.paneId(forPanelId: browserSplitPanel.id),
+            originalPaneId,
+            "Expected moved browser panel to resolve to the destination pane"
         )
     }
 

@@ -1680,6 +1680,10 @@ final class BrowserPanel: Panel, ObservableObject {
     /// Increment to request a UI-only flash highlight (e.g. from a keyboard shortcut).
     @Published private(set) var focusFlashToken: Int = 0
 
+    /// Bump this token to force SwiftUI to call `updateNSView` on `WebViewRepresentable`
+    /// after bonsplit move/reparent sequences leave the current host detached.
+    @Published var viewReattachToken: UInt64 = 0
+
     /// Sticky omnibar-focus intent. This survives view mount timing races and is
     /// cleared only after BrowserPanelView acknowledges handling it.
     @Published private(set) var pendingAddressBarFocusRequestId: UUID?
@@ -2110,6 +2114,10 @@ final class BrowserPanel: Panel, ObservableObject {
 
     func triggerFlash() {
         focusFlashToken &+= 1
+    }
+
+    func requestViewReattach() {
+        viewReattachToken &+= 1
     }
 
     func sessionNavigationHistorySnapshot() -> (
