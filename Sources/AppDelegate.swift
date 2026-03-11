@@ -2325,9 +2325,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         startSessionAutosaveTimerIfNeeded()
         startSocketListenerHealthMonitorIfNeeded()
 #if DEBUG
-        setupJumpUnreadUITestIfNeeded()
-        setupGotoSplitUITestIfNeeded()
-        setupMultiWindowNotificationsUITestIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.setupJumpUnreadUITestIfNeeded()
+            self.setupGotoSplitUITestIfNeeded()
+            self.setupMultiWindowNotificationsUITestIfNeeded()
+        }
 
         // UI tests sometimes don't run SwiftUI `.onAppear` soon enough (or at all) on the VM.
         // The automation socket is a core testing primitive, so ensure it's started here when
@@ -9713,14 +9716,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self else { return }
             guard let panelId = notification.object as? UUID else { return }
-            self.browserPanel(for: panelId)?.beginSuppressWebViewFocusForAddressBar()
-            self.browserAddressBarFocusedPanelId = panelId
-            self.stopBrowserOmnibarSelectionRepeat()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.browserPanel(for: panelId)?.beginSuppressWebViewFocusForAddressBar()
+                self.browserAddressBarFocusedPanelId = panelId
+                self.stopBrowserOmnibarSelectionRepeat()
 #if DEBUG
-            dlog("addressBar FOCUS panelId=\(panelId.uuidString.prefix(8))")
+                dlog("addressBar FOCUS panelId=\(panelId.uuidString.prefix(8))")
 #endif
+            }
         }
 
         browserAddressBarBlurObserver = NotificationCenter.default.addObserver(
@@ -9728,15 +9733,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self else { return }
             guard let panelId = notification.object as? UUID else { return }
-            self.browserPanel(for: panelId)?.endSuppressWebViewFocusForAddressBar()
-            if self.browserAddressBarFocusedPanelId == panelId {
-                self.browserAddressBarFocusedPanelId = nil
-                self.stopBrowserOmnibarSelectionRepeat()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.browserPanel(for: panelId)?.endSuppressWebViewFocusForAddressBar()
+                if self.browserAddressBarFocusedPanelId == panelId {
+                    self.browserAddressBarFocusedPanelId = nil
+                    self.stopBrowserOmnibarSelectionRepeat()
 #if DEBUG
-                dlog("addressBar BLUR panelId=\(panelId.uuidString.prefix(8))")
+                    dlog("addressBar BLUR panelId=\(panelId.uuidString.prefix(8))")
 #endif
+                }
             }
         }
     }

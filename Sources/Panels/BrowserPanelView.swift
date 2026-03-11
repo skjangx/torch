@@ -387,10 +387,10 @@ struct BrowserPanelView: View {
         }
         .coordinateSpace(name: "BrowserPanelViewSpace")
         .onPreferenceChange(OmnibarPillFramePreferenceKey.self) { frame in
-            omnibarPillFrame = frame
+            scheduleOmnibarPillFrameUpdate(frame)
         }
         .onPreferenceChange(BrowserAddressBarHeightPreferenceKey.self) { height in
-            addressBarHeight = height
+            scheduleAddressBarHeightUpdate(height)
         }
         .onReceive(NotificationCenter.default.publisher(for: .webViewDidReceiveClick).filter { [weak panel] note in
             // Only handle clicks from our own webview.
@@ -420,18 +420,10 @@ struct BrowserPanelView: View {
                 BrowserSearchSettings.searchSuggestionsEnabledKey: BrowserSearchSettings.defaultSearchSuggestionsEnabled,
                 BrowserThemeSettings.modeKey: BrowserThemeSettings.defaultMode.rawValue,
             ])
-            let resolvedThemeMode = BrowserThemeSettings.mode(defaults: .standard)
-            if browserThemeModeRaw != resolvedThemeMode.rawValue {
-                browserThemeModeRaw = resolvedThemeMode.rawValue
-            }
             panel.refreshAppearanceDrivenColors()
             panel.setBrowserThemeMode(browserThemeMode)
-            schedulePendingAddressBarFocusRequestApply()
-            syncURLFromPanel()
-            // If the browser surface is focused but has no URL loaded yet, auto-focus the omnibar.
-            autoFocusOmnibarIfBlank()
-            syncWebViewResponderPolicyWithViewState(reason: "onAppear")
             BrowserHistoryStore.shared.loadIfNeeded()
+            scheduleInitialBrowserViewStateSync()
 #if DEBUG
             logBrowserFocusState(event: "view.onAppear")
 #endif
@@ -553,6 +545,43 @@ struct BrowserPanelView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyDefaultBackgroundDidChange)) { _ in
             ghosttyBackgroundGeneration &+= 1
+        }
+    }
+
+    private func scheduleOmnibarPillFrameUpdate(_ frame: CGRect) {
+        guard !rectApproximatelyEqual(omnibarPillFrame, frame) else { return }
+        DispatchQueue.main.async {
+            guard !rectApproximatelyEqual(omnibarPillFrame, frame) else { return }
+            omnibarPillFrame = frame
+        }
+    }
+
+    private func scheduleAddressBarHeightUpdate(_ height: CGFloat) {
+        guard abs(addressBarHeight - height) > 0.5 else { return }
+        DispatchQueue.main.async {
+            guard abs(addressBarHeight - height) > 0.5 else { return }
+            addressBarHeight = height
+        }
+    }
+
+    private func rectApproximatelyEqual(_ lhs: CGRect, _ rhs: CGRect, epsilon: CGFloat = 0.5) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) <= epsilon &&
+            abs(lhs.origin.y - rhs.origin.y) <= epsilon &&
+            abs(lhs.size.width - rhs.size.width) <= epsilon &&
+            abs(lhs.size.height - rhs.size.height) <= epsilon
+    }
+
+    private func scheduleInitialBrowserViewStateSync() {
+        DispatchQueue.main.async {
+            let resolvedThemeMode = BrowserThemeSettings.mode(defaults: .standard)
+            if browserThemeModeRaw != resolvedThemeMode.rawValue {
+                browserThemeModeRaw = resolvedThemeMode.rawValue
+            }
+            schedulePendingAddressBarFocusRequestApply()
+            syncURLFromPanel()
+            // If the browser surface is focused but has no URL loaded yet, auto-focus the omnibar.
+            autoFocusOmnibarIfBlank()
+            syncWebViewResponderPolicyWithViewState(reason: "onAppear")
         }
     }
 
@@ -3139,14 +3168,18 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
                 }
                 lastPublishedSelection = range
                 lastPublishedHasMarkedText = hasMarkedText
-                parent.onSelectionChanged(range, hasMarkedText)
+                DispatchQueue.main.async { [parent] in
+                    parent.onSelectionChanged(range, hasMarkedText)
+                }
             } else {
                 let location = field.stringValue.utf16.count
                 let range = NSRange(location: location, length: 0)
                 guard !NSEqualRanges(range, lastPublishedSelection) || lastPublishedHasMarkedText else { return }
                 lastPublishedSelection = range
                 lastPublishedHasMarkedText = false
-                parent.onSelectionChanged(range, false)
+                DispatchQueue.main.async { [parent] in
+                    parent.onSelectionChanged(range, false)
+                }
             }
         }
 
