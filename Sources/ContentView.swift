@@ -1635,7 +1635,7 @@ struct ContentView: View {
     private static let commandPaletteVisiblePreviewResultLimit = 48
     private static let commandPaletteVisiblePreviewCandidateLimit = 192
     private static let commandPaletteListMaxHeight: CGFloat = 450
-    private static let commandPaletteRowHeight: CGFloat = 24
+    private static let commandPaletteRowHeight: CGFloat = 20
     private static let commandPaletteEmptyStateHeight: CGFloat = 30
     private static let commandPaletteEmptyStateVerticalPadding: CGFloat = 7
     private static let minimumSidebarWidth: CGFloat = 186
@@ -3106,6 +3106,7 @@ struct ContentView: View {
                                 }
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 2)
+                                .frame(minHeight: Self.commandPaletteRowHeight, alignment: .leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(rowBackground)
                                 .contentShape(Rectangle())
