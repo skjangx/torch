@@ -2057,7 +2057,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private static let commandPaletteRequestGraceInterval: TimeInterval = 1.25
     private static let commandPalettePendingOpenMaxAge: TimeInterval = 8.0
     private static let sessionAutosaveTypingQuietPeriod: TimeInterval = 0.65
-    private static let quitSessionRestoreSecondInterruptDelay: TimeInterval = 0.08
+    private static let quitSessionRestoreFollowupInterruptDelays: [TimeInterval] = [0.6, 1.2]
     private static let quitSessionRestorePollInterval: TimeInterval = 0.12
     private static let quitSessionRestoreQuietPeriod: TimeInterval = 0.35
     private static let quitSessionRestoreMaximumWait: TimeInterval = 2.5
@@ -3177,9 +3177,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             lastActivityAt: ProcessInfo.processInfo.systemUptime
         )
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.quitSessionRestoreSecondInterruptDelay) { [weak self] in
-            guard let self, self.quitSessionRestoreTerminationPending else { return }
-            self.sendQuitSessionRestoreInterrupts(to: targetPanelIds, attempt: 2)
+        for (offset, delay) in Self.quitSessionRestoreFollowupInterruptDelays.enumerated() {
+            let attempt = offset + 2
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.quitSessionRestoreTerminationPending else { return }
+                self.sendQuitSessionRestoreInterrupts(to: targetPanelIds, attempt: attempt)
+            }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.quitSessionRestorePollInterval) { [weak self] in
@@ -3215,8 +3218,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                   terminalPanel.needsConfirmClose() else {
                 continue
             }
-            guard terminalPanel.sendNamedKey(.ctrlC) else { continue }
-            terminalPanel.surface.forceRefresh(reason: "sessionQuitRestore.ctrlC.\(attempt)")
+            guard terminalPanel.sendControlCharacter(.etx) else { continue }
+            terminalPanel.surface.forceRefresh(reason: "sessionQuitRestore.etx.\(attempt)")
             sentCount += 1
         }
 #if DEBUG

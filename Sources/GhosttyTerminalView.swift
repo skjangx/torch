@@ -2303,6 +2303,20 @@ final class TerminalSurface: Identifiable, ObservableObject {
         case ctrlD
     }
 
+    enum ControlCharacter {
+        case etx
+        case eot
+
+        var byte: UInt8 {
+            switch self {
+            case .etx:
+                return 0x03
+            case .eot:
+                return 0x04
+            }
+        }
+    }
+
     final class SearchState: ObservableObject {
         @Published var needle: String
         @Published var selected: UInt?
@@ -3123,6 +3137,13 @@ final class TerminalSurface: Identifiable, ObservableObject {
         return true
     }
 
+    @discardableResult
+    func sendControlCharacter(_ control: ControlCharacter) -> Bool {
+        guard let surface else { return false }
+        sendTextEvent(String(UnicodeScalar(control.byte)), to: surface)
+        return true
+    }
+
     func sendText(_ text: String) {
         guard let data = text.data(using: .utf8), !data.isEmpty else { return }
         guard let surface = surface else {
@@ -3165,6 +3186,20 @@ final class TerminalSurface: Identifiable, ObservableObject {
         data.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress?.assumingMemoryBound(to: CChar.self) else { return }
             ghostty_surface_text(surface, baseAddress, UInt(rawBuffer.count))
+        }
+    }
+
+    private func sendTextEvent(_ text: String, to surface: ghostty_surface_t) {
+        var keyEvent = ghostty_input_key_s()
+        keyEvent.action = GHOSTTY_ACTION_PRESS
+        keyEvent.keycode = 0
+        keyEvent.mods = GHOSTTY_MODS_NONE
+        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
+        keyEvent.unshifted_codepoint = 0
+        keyEvent.composing = false
+        text.withCString { ptr in
+            keyEvent.text = ptr
+            _ = ghostty_surface_key(surface, keyEvent)
         }
     }
 

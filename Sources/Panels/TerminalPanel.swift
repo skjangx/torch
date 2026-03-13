@@ -191,6 +191,11 @@ final class TerminalPanel: Panel, ObservableObject {
         surface.sendNamedKey(key)
     }
 
+    @discardableResult
+    func sendControlCharacter(_ control: TerminalSurface.ControlCharacter) -> Bool {
+        surface.sendControlCharacter(control)
+    }
+
     func triggerFlash() {
         hostedView.triggerFlash()
     }
