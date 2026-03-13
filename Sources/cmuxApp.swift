@@ -4852,9 +4852,9 @@ private struct ThemeWindowThumbnail: View {
                 .offset(x: width * 0.12, y: height * 0.2)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
