@@ -58,7 +58,19 @@ typeset -g _CMUX_CMD_START=0
 typeset -g _CMUX_TTY_NAME=""
 typeset -g _CMUX_TTY_REPORTED=0
 typeset -g _CMUX_AUTOSUGGEST_PROVIDER_LAST=""
-typeset -g _CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE="${TMPDIR:-/tmp}/cmux-autosuggest-provider.$$.ack"
+typeset -g _CMUX_AUTOSUGGEST_PROVIDER_DETECTED=""
+typeset -g _CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE=""
+if [[ -x /usr/bin/mktemp ]]; then
+    _CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE="$(
+        /usr/bin/mktemp -t cmux-autosuggest-provider 2>/dev/null || true
+    )"
+fi
+if [[ -z "$_CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE" ]] && command -v mktemp >/dev/null 2>&1; then
+    _CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE="$(
+        mktemp "${TMPDIR:-/tmp}/cmux-autosuggest-provider.XXXXXXXX" 2>/dev/null || true
+    )"
+fi
+[[ -n "$_CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE" ]] || _CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE="${TMPDIR:-/tmp}/cmux-autosuggest-provider.$$.ack"
 /bin/rm -f -- "$_CMUX_AUTOSUGGEST_PROVIDER_ACK_FILE" >/dev/null 2>&1 || true
 
 _cmux_normalize_autosuggestion_provider() {
@@ -201,15 +213,22 @@ _cmux_autosuggestion_provider() {
         return 0
     fi
 
+    if [[ -n "$_CMUX_AUTOSUGGEST_PROVIDER_DETECTED" ]]; then
+        print -r -- "$_CMUX_AUTOSUGGEST_PROVIDER_DETECTED"
+        return 0
+    fi
+
     local provider
     provider="$(_cmux_detect_known_autosuggestion_provider 2>/dev/null || true)"
     if [[ -n "$provider" ]]; then
+        [[ "$provider" == "none" ]] || _CMUX_AUTOSUGGEST_PROVIDER_DETECTED="$provider"
         print -r -- "$provider"
         return 0
     fi
 
     provider="$(_cmux_detect_unknown_autosuggestion_provider 2>/dev/null || true)"
     if [[ -n "$provider" ]]; then
+        [[ "$provider" == "none" ]] || _CMUX_AUTOSUGGEST_PROVIDER_DETECTED="$provider"
         print -r -- "$provider"
         return 0
     fi
