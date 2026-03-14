@@ -15833,6 +15833,25 @@ final class BrowserPanelRuntimeBoundaryTests: XCTestCase {
 
         XCTAssertNil(panel.surfaceWindow())
         XCTAssertTrue(panel.surfaceHostingWindow() === window)
+        XCTAssertTrue(panel.effectiveSurfaceWindow() === window)
+    }
+
+    func testBrowserPanelOwnsSurfaceWebViewTracksReplacementIdentity() {
+        let runtime = RecordingBrowserSurfaceRuntime()
+        let panel = BrowserPanel(
+            workspaceId: UUID(),
+            runtimeFactory: RecordingBrowserSurfaceRuntimeFactory(runtime: runtime)
+        )
+        let originalWebView = panel.webView
+
+        XCTAssertTrue(panel.ownsSurfaceWebView(originalWebView))
+
+        panel.debugSimulateWebContentProcessTermination()
+
+        let replacementWebView = panel.webView
+        XCTAssertFalse(replacementWebView === originalWebView)
+        XCTAssertFalse(panel.ownsSurfaceWebView(originalWebView))
+        XCTAssertTrue(panel.ownsSurfaceWebView(replacementWebView))
     }
 
     func testBrowserPanelSurfaceFocusStateUsesRuntimeBoundary() {

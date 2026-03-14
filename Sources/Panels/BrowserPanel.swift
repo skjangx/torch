@@ -4165,7 +4165,7 @@ extension BrowserPanel {
         }
         let generation = beginSearchFocusRequest(reason: "startFind")
 #if DEBUG
-        let window = surfaceWindow()
+        let window = surfaceHostingWindow()
         dlog(
             "browser.find.start panel=\(id.uuidString.prefix(5)) " +
             "created=\(created ? 1 : 0) render=\(shouldRenderWebView ? 1 : 0) " +
@@ -4196,7 +4196,7 @@ extension BrowserPanel {
             return
         }
 #if DEBUG
-        let window = surfaceWindow()
+        let window = surfaceHostingWindow()
         dlog(
             "browser.find.focusNotification panel=\(id.uuidString.prefix(5)) " +
             "generation=\(generation) " +
@@ -4287,6 +4287,10 @@ extension BrowserPanel {
 
     func surfaceWindow() -> NSWindow? {
         runtime.hostWindow()
+    }
+
+    func ownsSurfaceWebView(_ candidate: WKWebView?) -> Bool {
+        webView === candidate
     }
 
     func surfaceHostingWindow() -> NSWindow? {

@@ -997,7 +997,7 @@ struct BrowserPanelView: View {
     private func isCommandPaletteVisibleForPanelWindow() -> Bool {
         guard let app = AppDelegate.shared else { return false }
 
-        if let window = panel.surfaceWindow(), app.isCommandPaletteVisible(for: window) {
+        if let window = panel.surfaceHostingWindow(), app.isCommandPaletteVisible(for: window) {
             return true
         }
 
@@ -1525,7 +1525,7 @@ struct BrowserPanelView: View {
             syncWebViewResponderPolicyWithViewState(reason: "effects.blurToWebView.preHandoff")
             setAddressBarFocused(false, reason: "effects.blurToWebView")
             DispatchQueue.main.async {
-                guard let window = panel.surfaceWindow(),
+                guard let window = panel.surfaceHostingWindow(),
                       !panel.isSurfaceHiddenOrHasHiddenAncestor() else { return }
                 guard shouldApplyAddressBarExitFallback(in: window) else {
 #if DEBUG

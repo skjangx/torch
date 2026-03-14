@@ -6857,7 +6857,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let readyState = (payload?["readyState"] as? String) ?? ""
             var secondaryClickOffsetX = -1.0
             var secondaryClickOffsetY = -1.0
-            if let window = panel.surfaceWindow(),
+            if let window = panel.surfaceHostingWindow(),
                let webFrame = panel.surfaceFrameInWindowCoordinates() {
                 let contentHeight = Double(window.contentView?.bounds.height ?? 0)
                 if webFrame.width > 1,
