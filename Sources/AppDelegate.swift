@@ -3486,6 +3486,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             setActiveMainWindow(window)
         }
 
+        refreshTitlebarAccessory(for: window)
+
         attemptStartupSessionRestoreIfNeeded(primaryWindow: window)
         if !isTerminatingApp {
             _ = saveSessionSnapshot(includeScrollback: false)
@@ -4977,6 +4979,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func sidebarVisibility(windowId: UUID) -> Bool? {
         mainWindowContexts.values.first(where: { $0.windowId == windowId })?.sidebarState.isVisible
+    }
+
+    func sidebarVisibility(for window: NSWindow?) -> Bool? {
+        guard let window else { return nil }
+        return mainWindowContexts.values.first(where: { $0.window === window })?.sidebarState.isVisible
     }
 
     @objc func openNewMainWindow(_ sender: Any?) {
@@ -6513,6 +6520,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             workspace.setPanelCustomTitle(panelId: betaPanelId, title: betaTitle)
             if startWithHiddenSidebar {
                 self.sidebarState?.isVisible = false
+                if let mainWindow = NSApp.windows.first(where: { window in
+                    guard let raw = window.identifier?.rawValue else { return false }
+                    return raw == "cmux.main" || raw.hasPrefix("cmux.main.")
+                }) {
+                    self.refreshTitlebarAccessory(for: mainWindow)
+                }
             }
             self.writeBonsplitTabDragUITestData([
                 "ready": "1",
@@ -7567,6 +7580,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func attachUpdateAccessory(to window: NSWindow) {
         titlebarAccessoryController.start()
         titlebarAccessoryController.attach(to: window)
+    }
+
+    func refreshTitlebarAccessory(for window: NSWindow) {
+        titlebarAccessoryController.refresh(for: window)
     }
 
     func applyWindowDecorations(to window: NSWindow) {

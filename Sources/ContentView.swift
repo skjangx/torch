@@ -282,8 +282,17 @@ struct TitlebarLayerBackground: NSViewRepresentable {
     }
 }
 
+extension Notification.Name {
+    static let cmuxSidebarVisibilityDidChange = Notification.Name("cmuxSidebarVisibilityDidChange")
+}
+
 final class SidebarState: ObservableObject {
-    @Published var isVisible: Bool
+    @Published var isVisible: Bool {
+        didSet {
+            guard oldValue != isVisible else { return }
+            NotificationCenter.default.post(name: .cmuxSidebarVisibilityDidChange, object: self)
+        }
+    }
     @Published var persistedWidth: CGFloat
 
     init(isVisible: Bool = true, persistedWidth: CGFloat = CGFloat(SessionPersistencePolicy.defaultSidebarWidth)) {

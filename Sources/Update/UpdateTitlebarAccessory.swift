@@ -117,6 +117,7 @@ struct TitlebarControlsStyleConfig {
 
 final class TitlebarControlsViewModel: ObservableObject {
     weak var notificationsAnchorView: NSView?
+    @Published var canRevealControls = true
 }
 
 struct NotificationsAnchorView: NSViewRepresentable {
@@ -287,6 +288,7 @@ struct TitlebarControlsView: View {
     }
 
     private var shouldShowControls: Bool {
+        guard viewModel.canRevealControls else { return false }
         switch visibilityMode {
         case .always:
             return true
@@ -306,6 +308,7 @@ struct TitlebarControlsView: View {
             .padding(.trailing, titlebarHintTrailingInset)
             .contentShape(Rectangle())
             .opacity(shouldShowControls ? 1 : 0)
+            .allowsHitTesting(viewModel.canRevealControls)
             .animation(.easeInOut(duration: 0.14), value: shouldShowControls)
             .background(
                 WindowAccessor { window in
@@ -723,6 +726,13 @@ func titlebarControlsShouldApplyLayout(
         || abs(previous.yOffset - next.yOffset) > tolerance
 }
 
+func titlebarControlsShouldReserveAccessorySpace(
+    showWorkspaceTitlebar: Bool,
+    sidebarVisible: Bool
+) -> Bool {
+    showWorkspaceTitlebar || sidebarVisible
+}
+
 final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewController, NSPopoverDelegate {
     private let hostingView: NonDraggableHostingView<TitlebarControlsView>
     private let containerView = NSView()
@@ -733,8 +743,10 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
     private var cachedFittingSize: NSSize?
     private var lastObservedViewSize: NSSize = .zero
     private var lastAppliedLayoutSnapshot: TitlebarControlsLayoutSnapshot?
+    private var shouldReserveAccessorySpace = true
     private let viewModel = TitlebarControlsViewModel()
     private var userDefaultsObserver: NSObjectProtocol?
+    private var sidebarVisibilityObserver: NSObjectProtocol?
     var popoverIsShownForTesting: Bool { notificationsPopover.isShown }
 
     init(notificationStore: TerminalNotificationStore) {
@@ -771,7 +783,16 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            self?.refreshVisibility()
             self?.scheduleSizeUpdate(invalidateFittingSize: true)
+        }
+
+        sidebarVisibilityObserver = NotificationCenter.default.addObserver(
+            forName: .cmuxSidebarVisibilityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshVisibility()
         }
 
         scheduleSizeUpdate(invalidateFittingSize: true)
@@ -785,10 +806,14 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         if let userDefaultsObserver {
             NotificationCenter.default.removeObserver(userDefaultsObserver)
         }
+        if let sidebarVisibilityObserver {
+            NotificationCenter.default.removeObserver(sidebarVisibilityObserver)
+        }
     }
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        refreshVisibility()
         scheduleSizeUpdate(invalidateFittingSize: true)
     }
 
@@ -817,7 +842,33 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         }
     }
 
+    func refreshVisibility() {
+        let next = titlebarControlsShouldReserveAccessorySpace(
+            showWorkspaceTitlebar: WorkspaceTitlebarSettings.isVisible(),
+            sidebarVisible: AppDelegate.shared?.sidebarVisibility(for: view.window) ?? true
+        )
+        viewModel.canRevealControls = next
+        if !next {
+            dismissNotificationsPopover()
+        }
+        guard next != shouldReserveAccessorySpace else { return }
+        shouldReserveAccessorySpace = next
+        scheduleSizeUpdate(invalidateFittingSize: true)
+    }
+
     private func updateSize() {
+        guard shouldReserveAccessorySpace else {
+            lastAppliedLayoutSnapshot = nil
+            preferredContentSize = .zero
+            isHidden = true
+            view.isHidden = true
+            containerView.isHidden = true
+            hostingView.isHidden = true
+            containerView.frame = .zero
+            hostingView.frame = .zero
+            return
+        }
+
         let contentSize: NSSize
         if fittingSizeNeedsRefresh || cachedFittingSize == nil {
             hostingView.invalidateIntrinsicContentSize()
@@ -828,6 +879,10 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         contentSize = cachedFittingSize ?? .zero
 
         guard contentSize.width > 0, contentSize.height > 0 else { return }
+        isHidden = false
+        view.isHidden = false
+        containerView.isHidden = false
+        hostingView.isHidden = false
         let titlebarHeight = view.window.map { window in
             window.frame.height - window.contentLayoutRect.height
         } ?? contentSize.height
@@ -1145,6 +1200,11 @@ final class UpdateTitlebarAccessoryController {
         attachIfNeeded(to: window)
     }
 
+    func refresh(for window: NSWindow) {
+        attachIfNeeded(to: window)
+        controlsControllers.allObjects.first(where: { $0.view.window === window })?.refreshVisibility()
+    }
+
     private func installObservers() {
         let center = NotificationCenter.default
         observers.append(center.addObserver(
@@ -1233,6 +1293,7 @@ final class UpdateTitlebarAccessoryController {
         }
 
         attachedWindows.add(window)
+        controlsControllers.allObjects.first(where: { $0.view.window === window })?.refreshVisibility()
 
 #if DEBUG
         let env = ProcessInfo.processInfo.environment

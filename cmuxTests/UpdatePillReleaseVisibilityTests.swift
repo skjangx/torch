@@ -192,3 +192,24 @@ final class TitlebarControlsHoverPolicyTests: XCTestCase {
         XCTAssertFalse(titlebarControlsShouldTrackButtonHover(config: TitlebarControlsStyle.softButtons.config))
     }
 }
+
+final class TitlebarControlsVisibilityPolicyTests: XCTestCase {
+    func testAccessorySpaceCollapsesOnlyWhenHiddenTitlebarAndHiddenSidebarCoincide() {
+        XCTAssertTrue(titlebarControlsShouldReserveAccessorySpace(
+            showWorkspaceTitlebar: true,
+            sidebarVisible: true
+        ))
+        XCTAssertTrue(titlebarControlsShouldReserveAccessorySpace(
+            showWorkspaceTitlebar: true,
+            sidebarVisible: false
+        ))
+        XCTAssertTrue(titlebarControlsShouldReserveAccessorySpace(
+            showWorkspaceTitlebar: false,
+            sidebarVisible: true
+        ))
+        XCTAssertFalse(titlebarControlsShouldReserveAccessorySpace(
+            showWorkspaceTitlebar: false,
+            sidebarVisible: false
+        ))
+    }
+}
