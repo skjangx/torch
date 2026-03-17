@@ -362,8 +362,11 @@ func shouldAllowGhosttyClipboardWrite(
     // Terminal-owned clipboard writes should not let background surfaces clobber
     // the user's global pasteboard. Non-system clipboards remain surface-local.
     guard location == GHOSTTY_CLIPBOARD_STANDARD else { return true }
-    _ = scope
-    return true
+    guard let scope else { return false }
+    return scope.appIsActive &&
+        scope.windowIsKey &&
+        scope.tabIsSelected &&
+        scope.surfaceIsFocused
 }
 
 #if DEBUG
