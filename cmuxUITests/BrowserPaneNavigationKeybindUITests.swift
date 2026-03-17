@@ -1035,6 +1035,7 @@ final class TerminalFontZoomShortcutUITests: XCTestCase {
         app.launchEnvironment["CMUX_SOCKET_PATH"] = socketPath
         app.launchEnvironment["CMUX_SOCKET_MODE"] = "allowAll"
         app.launchEnvironment["CMUX_SOCKET_ENABLE"] = "1"
+        app.launchEnvironment["CMUX_ALLOW_SOCKET_OVERRIDE"] = "1"
         app.launchEnvironment["CMUX_UI_TEST_SOCKET_SANITY"] = "1"
         app.launchEnvironment["CMUX_UI_TEST_SOCKET_SANITY_PATH"] = dataPath
         app.launch()
@@ -1070,7 +1071,13 @@ final class TerminalFontZoomShortcutUITests: XCTestCase {
             )
             return
         }
-        XCTAssertTrue(waitForSocketPong(timeout: 12.0), "Expected control socket at \(socketPath)")
+        let pingResponse = waitForSocketPong(timeout: 12.0)
+        XCTAssertEqual(
+            pingResponse,
+            "PONG",
+            "Expected control socket at \(socketPath). " +
+                "setup=\(socketDiagnostics(from: setup)) lastResponse=\(pingResponse ?? "<nil>")"
+        )
 
         let surfaceId = try XCTUnwrap(okUUID(from: socketCommand("new_surface --type=terminal")))
         XCTAssertEqual(socketCommand("focus_surface \(surfaceId)"), "OK")
@@ -1099,10 +1106,13 @@ final class TerminalFontZoomShortcutUITests: XCTestCase {
         )
     }
 
-    private func waitForSocketPong(timeout: TimeInterval) -> Bool {
-        waitForCondition(timeout: timeout) {
-            self.socketCommand("ping") == "PONG"
+    private func waitForSocketPong(timeout: TimeInterval) -> String? {
+        var lastResponse: String?
+        _ = waitForCondition(timeout: timeout) {
+            lastResponse = self.socketCommand("ping")
+            return lastResponse == "PONG"
         }
+        return lastResponse == "PONG" ? "PONG" : (socketCommand("ping") ?? lastResponse)
     }
 
     private func ensureForegroundAfterLaunch(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
