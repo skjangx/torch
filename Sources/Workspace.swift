@@ -2653,18 +2653,52 @@ final class Workspace: Identifiable, ObservableObject {
             return PostCloseFocusCandidate(paneId: paneId, frame: frame)
         }
 
+        var candidateByDirection: [CloseFocusDirection: PostCloseFocusCandidate] = [:]
         for direction in CloseFocusDirection.allCases {
-            if let geometry = bestPostCloseFocusCandidate(
+            guard let candidate = bestPostCloseFocusCandidate(
                 from: closingFrame,
                 direction: direction,
                 candidates: candidates
-            ),
-               let paneId = paneById[geometry.paneId] {
-                return paneId
+            ) else {
+                continue
+            }
+            candidateByDirection[direction] = candidate
+        }
+
+        for requirePeerBandMatch in [true, false] {
+            for direction in CloseFocusDirection.allCases {
+                guard let geometry = candidateByDirection[direction] else { continue }
+                let isPeerBandMatch = isPeerPostCloseFocusCandidate(
+                    geometry,
+                    relativeTo: closingFrame,
+                    direction: direction
+                )
+                if requirePeerBandMatch != isPeerBandMatch { continue }
+                if let paneId = paneById[geometry.paneId] {
+                    return paneId
+                }
             }
         }
 
         return bonsplitController.allPaneIds.first(where: { $0.id != closingPaneId.id })
+    }
+
+    private func isPeerPostCloseFocusCandidate(
+        _ candidate: PostCloseFocusCandidate,
+        relativeTo closingFrame: CGRect,
+        direction: CloseFocusDirection
+    ) -> Bool {
+        let peerBandTolerance: CGFloat = 0.1
+        let orthogonalSpanDelta: CGFloat
+
+        switch direction {
+        case .left, .right:
+            orthogonalSpanDelta = abs(candidate.frame.height - closingFrame.height)
+        case .up, .down:
+            orthogonalSpanDelta = abs(candidate.frame.width - closingFrame.width)
+        }
+
+        return orthogonalSpanDelta <= peerBandTolerance
     }
 
     private func bestPostCloseFocusCandidate(
