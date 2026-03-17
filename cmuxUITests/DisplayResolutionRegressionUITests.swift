@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 
 final class DisplayResolutionRegressionUITests: XCTestCase {
+    private let displayHarnessManifestPath = "/tmp/cmux-ui-test-display-harness.json"
     private var socketPath = ""
     private var diagnosticsPath = ""
     private var displayReadyPath = ""
@@ -116,20 +117,44 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
 
     private func prepareDisplayHarnessIfNeeded() throws {
         let env = ProcessInfo.processInfo.environment
-        if let externalReadyPath = env["CMUX_UI_TEST_DISPLAY_READY_PATH"], !externalReadyPath.isEmpty,
-           let externalIDPath = env["CMUX_UI_TEST_DISPLAY_ID_PATH"], !externalIDPath.isEmpty,
-           let externalStartPath = env["CMUX_UI_TEST_DISPLAY_START_PATH"], !externalStartPath.isEmpty,
-           let externalDonePath = env["CMUX_UI_TEST_DISPLAY_DONE_PATH"], !externalDonePath.isEmpty {
-            displayReadyPath = externalReadyPath
-            displayIDPath = externalIDPath
-            displayStartPath = externalStartPath
-            displayDonePath = externalDonePath
-            helperLogPath = env["CMUX_UI_TEST_DISPLAY_LOG_PATH"] ?? helperLogPath
+        if let externalHarness = loadExternalHarnessFromEnvironment(env) ?? loadExternalHarnessFromManifest() {
+            displayReadyPath = externalHarness.readyPath
+            displayIDPath = externalHarness.displayIDPath
+            displayStartPath = externalHarness.startPath
+            displayDonePath = externalHarness.donePath
+            if let logPath = externalHarness.logPath, !logPath.isEmpty {
+                helperLogPath = logPath
+            }
             return
         }
 
         try buildDisplayHelper()
         try launchDisplayHelper()
+    }
+
+    private func loadExternalHarnessFromEnvironment(_ env: [String: String]) -> ExternalDisplayHarness? {
+        guard let readyPath = env["CMUX_UI_TEST_DISPLAY_READY_PATH"], !readyPath.isEmpty,
+              let displayIDPath = env["CMUX_UI_TEST_DISPLAY_ID_PATH"], !displayIDPath.isEmpty,
+              let startPath = env["CMUX_UI_TEST_DISPLAY_START_PATH"], !startPath.isEmpty,
+              let donePath = env["CMUX_UI_TEST_DISPLAY_DONE_PATH"], !donePath.isEmpty else {
+            return nil
+        }
+
+        return ExternalDisplayHarness(
+            readyPath: readyPath,
+            displayIDPath: displayIDPath,
+            startPath: startPath,
+            donePath: donePath,
+            logPath: env["CMUX_UI_TEST_DISPLAY_LOG_PATH"]
+        )
+    }
+
+    private func loadExternalHarnessFromManifest() -> ExternalDisplayHarness? {
+        let manifestURL = URL(fileURLWithPath: displayHarnessManifestPath)
+        guard let data = try? Data(contentsOf: manifestURL) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(ExternalDisplayHarness.self, from: data)
     }
 
     private func buildDisplayHelper() throws {
@@ -317,5 +342,13 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
         var description: String {
             "draw=\(drawCount) present=\(presentCount) lastPresent=\(String(format: "%.3f", lastPresentTime)) inWindow=\(inWindow) key=\(windowIsKey) visible=\(windowOcclusionVisible)"
         }
+    }
+
+    private struct ExternalDisplayHarness: Decodable {
+        let readyPath: String
+        let displayIDPath: String
+        let startPath: String
+        let donePath: String
+        let logPath: String?
     }
 }

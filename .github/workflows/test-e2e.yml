@@ -240,8 +240,9 @@ jobs:
             START_PATH="${PREFIX}.start"
             DONE_PATH="${PREFIX}.done"
             LOG_PATH="${PREFIX}.log"
+            MANIFEST_PATH="/tmp/cmux-ui-test-display-harness.json"
 
-            rm -f "$READY_PATH" "$DISPLAY_ID_PATH" "$START_PATH" "$DONE_PATH" "$LOG_PATH"
+            rm -f "$READY_PATH" "$DISPLAY_ID_PATH" "$START_PATH" "$DONE_PATH" "$LOG_PATH" "$MANIFEST_PATH"
 
             clang -framework Foundation -framework CoreGraphics \
               -o /tmp/create-virtual-display scripts/create-virtual-display.m
@@ -256,7 +257,7 @@ jobs:
               --interval-ms 40 \
               >"$LOG_PATH" 2>&1 &
             DISPLAY_VDISPLAY_PID=$!
-            trap 'kill "${DISPLAY_VDISPLAY_PID:-}" >/dev/null 2>&1 || true' EXIT
+            trap 'kill "${DISPLAY_VDISPLAY_PID:-}" >/dev/null 2>&1 || true; rm -f "$MANIFEST_PATH"' EXIT
 
             for _ in {1..120}; do
               [ -f "$READY_PATH" ] && break
@@ -267,6 +268,12 @@ jobs:
               cat "$LOG_PATH" >&2 || true
               exit 1
             }
+
+            cat >"$MANIFEST_PATH" <<EOF
+          {"readyPath":"$READY_PATH","displayIDPath":"$DISPLAY_ID_PATH","startPath":"$START_PATH","donePath":"$DONE_PATH","logPath":"$LOG_PATH"}
+          EOF
+            echo "Display harness manifest: $MANIFEST_PATH"
+            cat "$MANIFEST_PATH"
 
             DISPLAY_ENV_PREFIX=(
               CMUX_UI_TEST_DISPLAY_READY_PATH="$READY_PATH"
