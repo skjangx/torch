@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -124,6 +126,45 @@ func TestWrapperBinaryDispatchesIntoCLI(t *testing.T) {
 
 	if got := strings.TrimSpace(string(output)); got != "PONG" {
 		t.Fatalf("wrapper invocation output = %q, want %q", got, "PONG")
+	}
+}
+
+func TestVerifyDirectDaemonTicketRejectsWrongServerID(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	ticket := signDirectDaemonTicketForTest(t, map[string]any{
+		"server_id":     "machine-123",
+		"team_id":       "team-123",
+		"session_id":    "",
+		"attachment_id": "",
+		"capabilities":  []string{"session.open"},
+		"exp":           now.Add(time.Minute).Unix(),
+		"nonce":         "nonce-123",
+	}, "secret-123")
+
+	_, rpcErr := verifyDirectDaemonTicket(ticket, "other-machine", "secret-123", now)
+	if rpcErr == nil || rpcErr.Code != "forbidden" {
+		t.Fatalf("expected forbidden error for mismatched server id, got %+v", rpcErr)
+	}
+}
+
+func TestVerifyDirectDaemonTicketAcceptsMatchingServerID(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	ticket := signDirectDaemonTicketForTest(t, map[string]any{
+		"server_id":     "machine-123",
+		"team_id":       "team-123",
+		"session_id":    "session-123",
+		"attachment_id": "attachment-123",
+		"capabilities":  []string{"session.open", "session.attach"},
+		"exp":           now.Add(time.Minute).Unix(),
+		"nonce":         "nonce-123",
+	}, "secret-123")
+
+	claims, rpcErr := verifyDirectDaemonTicket(ticket, "machine-123", "secret-123", now)
+	if rpcErr != nil {
+		t.Fatalf("expected matching server id ticket to verify, got %+v", rpcErr)
+	}
+	if claims.ServerID != "machine-123" {
+		t.Fatalf("verified server id = %q, want %q", claims.ServerID, "machine-123")
 	}
 }
 
@@ -752,4 +793,20 @@ func asInt(t *testing.T, value any, field string) int {
 		t.Fatalf("%s has unexpected type %T (%v)", field, value, value)
 		return 0
 	}
+}
+
+func signDirectDaemonTicketForTest(t *testing.T, claims map[string]any, ticketSecret string) string {
+	t.Helper()
+
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
+	}
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(ticketSecret))
+	if _, err := mac.Write([]byte(encodedPayload)); err != nil {
+		t.Fatalf("sign ticket payload: %v", err)
+	}
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return encodedPayload + "." + signature
 }
