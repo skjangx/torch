@@ -1,18 +1,11 @@
-import { StackProvider, StackTheme } from "@stackframe/stack";
-
-import { stackServerApp } from "@/lib/stack";
-
-// Root layout: minimal pass-through. The actual layout with <html>/<body> is
-// in app/[locale]/layout.tsx, which sets lang, dir, and wraps with i18n provider.
+// Root layout stays as a pass-through. The localized site routes define their
+// own document in app/[locale]/layout.tsx, and auth routes define theirs in
+// app/handler/layout.tsx.
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <StackTheme>
-      <StackProvider app={stackServerApp}>{children}</StackProvider>
-    </StackTheme>
-  );
+  return children;
 }
