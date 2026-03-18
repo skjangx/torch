@@ -58,7 +58,7 @@ class UpdateController {
     private var didStartUpdater: Bool = false
     private let readyRetryDelay: TimeInterval = 0.25
     private let readyRetryCount: Int = 20
-    private let backgroundProbeInterval: TimeInterval = 15 * 60
+    private let backgroundProbeInterval: TimeInterval = 30 * 60
 
     var viewModel: UpdateViewModel {
         userDriver.viewModel
@@ -145,7 +145,7 @@ class UpdateController {
         UpdateLogStore.shared.append("starting launch update probe")
         updater.checkForUpdateInformation()
 
-        // Re-probe every 15 minutes so the banner appears even if the app has been running
+        // Re-probe every 30 minutes so the banner appears even if the app has been running
         // for a while when a new version is published.
         backgroundProbeTimer?.invalidate()
         backgroundProbeTimer = Timer.scheduledTimer(withTimeInterval: backgroundProbeInterval, repeats: true) { [weak self] _ in
