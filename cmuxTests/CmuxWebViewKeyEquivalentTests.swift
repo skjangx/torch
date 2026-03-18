@@ -7448,6 +7448,30 @@ final class SidebarBranchOrderingTests: XCTestCase {
         XCTAssertEqual(workspace.pullRequest?.checks, .pass)
     }
 
+    @MainActor
+    func testUpdatePanelGitBranchClearsFocusedPullRequestWhenBranchChanges() {
+        let workspace = Workspace(title: "Tests", workingDirectory: FileManager.default.currentDirectoryPath, portOrdinal: 0)
+        guard let panelId = workspace.focusedPanelId else {
+            XCTFail("Expected focused panel for new workspace")
+            return
+        }
+
+        workspace.updatePanelGitBranch(panelId: panelId, branch: "feature/sidebar-pr", isDirty: false)
+        workspace.updatePanelPullRequest(
+            panelId: panelId,
+            number: 1629,
+            label: "PR",
+            url: URL(string: "https://github.com/manaflow-ai/cmux/pull/1629")!,
+            status: .open
+        )
+
+        workspace.updatePanelGitBranch(panelId: panelId, branch: "main", isDirty: false)
+
+        XCTAssertNil(workspace.pullRequest)
+        XCTAssertNil(workspace.panelPullRequests[panelId])
+        XCTAssertTrue(workspace.sidebarPullRequestsInDisplayOrder().isEmpty)
+    }
+
     private func pullRequestState(
         number: Int,
         label: String,
