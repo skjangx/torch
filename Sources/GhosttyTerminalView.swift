@@ -6156,7 +6156,9 @@ final class GhosttySurfaceScrollView: NSView {
     private var pendingDropZone: DropZone?
     private var dropZoneOverlayAnimationGeneration: UInt64 = 0
     private var pendingAutomaticFirstResponderApply = false
-    // Intentionally no focus retry loops: rely on AppKit first-responder and bonsplit selection.
+    private var automaticFirstResponderRetryBudget = 0
+    private static let automaticFirstResponderRetryDelay: TimeInterval = 0.03
+    private static let automaticFirstResponderRetryLimit = 8
 
     /// Tracks whether keyboard focus should go to the search field or the terminal
     /// when the window becomes key while the find bar is open.
@@ -7722,10 +7724,20 @@ final class GhosttySurfaceScrollView: NSView {
         return fr === surfaceView || fr.isDescendant(of: surfaceView)
     }
 
-    private func scheduleAutomaticFirstResponderApply(reason: String) {
+    private func scheduleAutomaticFirstResponderApply(
+        reason: String,
+        resetRetryBudget: Bool = true,
+        delay: TimeInterval = 0
+    ) {
+        if resetRetryBudget {
+            automaticFirstResponderRetryBudget = max(
+                automaticFirstResponderRetryBudget,
+                Self.automaticFirstResponderRetryLimit
+            )
+        }
         guard !pendingAutomaticFirstResponderApply else { return }
         pendingAutomaticFirstResponderApply = true
-        DispatchQueue.main.async { [weak self] in
+        let work = { [weak self] in
             guard let self else { return }
             self.pendingAutomaticFirstResponderApply = false
 #if DEBUG
@@ -7734,6 +7746,28 @@ final class GhosttySurfaceScrollView: NSView {
 #endif
             self.applyFirstResponderIfNeeded()
         }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
+    }
+
+    private func scheduleAutomaticFirstResponderRetry(reason: String) {
+        guard automaticFirstResponderRetryBudget > 0 else { return }
+        automaticFirstResponderRetryBudget -= 1
+#if DEBUG
+        let surfaceShort = surfaceView.terminalSurface?.id.uuidString.prefix(5) ?? "nil"
+        dlog(
+            "focus.apply.retry surface=\(surfaceShort) reason=\(reason) " +
+            "remaining=\(automaticFirstResponderRetryBudget)"
+        )
+#endif
+        scheduleAutomaticFirstResponderApply(
+            reason: reason,
+            resetRetryBudget: false,
+            delay: Self.automaticFirstResponderRetryDelay
+        )
     }
 
     private func reassertTerminalSurfaceFocus(reason: String) {
@@ -7780,6 +7814,7 @@ final class GhosttySurfaceScrollView: NSView {
                 "reason=hidden_or_tiny hidden=\(isHiddenForFocus ? 1 : 0) frame=\(String(format: "%.1fx%.1f", bounds.width, bounds.height))"
             )
 #endif
+            scheduleAutomaticFirstResponderRetry(reason: "applyFirstResponder.hiddenOrTiny")
             return
         }
         guard let window, window.isKeyWindow else { return }
@@ -7789,6 +7824,7 @@ final class GhosttySurfaceScrollView: NSView {
 #if DEBUG
             dlog("focus.apply.skip surface=\(surfaceShort) reason=stale_target")
 #endif
+            scheduleAutomaticFirstResponderRetry(reason: "applyFirstResponder.staleTarget")
             return
         }
         if surfaceView.terminalSurface?.searchState != nil {
@@ -7798,6 +7834,7 @@ final class GhosttySurfaceScrollView: NSView {
         }
         if let fr = window.firstResponder as? NSView,
            fr === surfaceView || fr.isDescendant(of: surfaceView) {
+            automaticFirstResponderRetryBudget = 0
             reassertTerminalSurfaceFocus(reason: "applyFirstResponder.alreadyFirstResponder")
             return
         }
@@ -7811,9 +7848,18 @@ final class GhosttySurfaceScrollView: NSView {
 #if DEBUG
         dlog("find.applyFirstResponder APPLY surface=\(surfaceShort) prevFirstResponder=\(String(describing: window.firstResponder))")
 #endif
-        window.makeFirstResponder(surfaceView)
+        let result = window.makeFirstResponder(surfaceView)
         if isSurfaceViewFirstResponder() {
+            automaticFirstResponderRetryBudget = 0
             reassertTerminalSurfaceFocus(reason: "applyFirstResponder.afterMakeFirstResponder")
+        } else {
+#if DEBUG
+            dlog(
+                "focus.apply.skip surface=\(surfaceShort) reason=makeFirstResponderFailed " +
+                "result=\(result ? 1 : 0) firstResponder=\(String(describing: window.firstResponder))"
+            )
+#endif
+            scheduleAutomaticFirstResponderRetry(reason: "applyFirstResponder.afterMakeFirstResponder")
         }
     }
 
