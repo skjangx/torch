@@ -7803,6 +7803,16 @@ final class Workspace: Identifiable, ObservableObject {
 
     // MARK: - Portal Lifecycle
 
+    /// Prepare this workspace to leave the foreground view.
+    /// This explicitly disables Bonsplit's AppKit chrome before the workspace is
+    /// hidden or unmounted because a fast workspace handoff can skip SwiftUI's
+    /// final `isInteractive = false` update.
+    func prepareForUnmount() {
+        bonsplitController.isInteractive = false
+        hideAllTerminalPortalViews()
+        hideAllBrowserPortalViews()
+    }
+
     /// Hide all terminal portal views for this workspace.
     /// Called before the workspace is unmounted to prevent portal-hosted terminal
     /// views from covering browser panes in the newly selected workspace.

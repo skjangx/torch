@@ -2005,23 +2005,24 @@ struct ContentView: View {
                     let isSelectedWorkspace = selectedWorkspaceId == tab.id
                     let isRetiringWorkspace = retiringWorkspaceId == tab.id
                     let shouldPrimeInBackground = tabManager.pendingBackgroundWorkspaceLoadIds.contains(tab.id)
-                    let isRenderedVisible = isSelectedWorkspace || isRetiringWorkspace
-                    let isWorkspaceVisibleToPanels = isRenderedVisible || shouldPrimeInBackground
+                    let shouldKeepMountedOffscreen = isRetiringWorkspace || shouldPrimeInBackground
+                    let isRenderedVisible = isSelectedWorkspace
+                    let isWorkspaceVisibleToPanels = isSelectedWorkspace
                     let workspaceRenderOpacity: Double = {
                         if isRenderedVisible {
                             return 1
                         }
-                        if shouldPrimeInBackground {
+                        if shouldKeepMountedOffscreen {
                             return 0.001
                         }
                         return 0
                     }()
-                    // Keep the retiring workspace visible during handoff, but never input-active.
-                    // Allowing both selected+retiring workspaces to be input-active lets the
-                    // old workspace steal first responder (notably with WKWebView), which can
-                    // delay handoff completion and make browser returns feel laggy.
+                    // Keep retiring/background-prime workspaces mounted offscreen so their
+                    // state can settle, but never expose their live portal-backed views after
+                    // selection changes. Otherwise the old workspace can remain visible and
+                    // interactive for a frame or longer.
                     let isInputActive = isSelectedWorkspace
-                    let portalPriority = isSelectedWorkspace ? 2 : (isRetiringWorkspace ? 1 : 0)
+                    let portalPriority = isSelectedWorkspace ? 2 : 0
                     WorkspaceContentView(
                         workspace: tab,
                         isWorkspaceVisible: isWorkspaceVisibleToPanels,
@@ -2835,7 +2836,7 @@ struct ContentView: View {
         let selectedCount = effectiveSelectedId == nil ? 0 : 1
         let maxMounted = max(baseMaxMounted, selectedCount + pinnedIds.count)
         let previousMountedIds = mountedWorkspaceIds
-        mountedWorkspaceIds = WorkspaceMountPolicy.nextMountedWorkspaceIds(
+        let nextMountedIds = WorkspaceMountPolicy.nextMountedWorkspaceIds(
             current: mountedWorkspaceIds,
             selected: effectiveSelectedId,
             pinnedIds: pinnedIds,
@@ -2843,6 +2844,12 @@ struct ContentView: View {
             isCycleHot: isCycleHot,
             maxMounted: maxMounted
         )
+        let removedMountedIds = previousMountedIds.filter { !nextMountedIds.contains($0) }
+        for workspaceId in removedMountedIds {
+            guard let workspace = currentTabs.first(where: { $0.id == workspaceId }) else { continue }
+            workspace.prepareForUnmount()
+        }
+        mountedWorkspaceIds = nextMountedIds
 #if DEBUG
         if mountedWorkspaceIds != previousMountedIds {
             let added = mountedWorkspaceIds.filter { !previousMountedIds.contains($0) }
@@ -3082,6 +3089,9 @@ struct ContentView: View {
         let generation = workspaceHandoffGeneration
         retiringWorkspaceId = oldSelectedId
         workspaceHandoffFallbackTask?.cancel()
+        if let retiringWorkspace = tabManager.tabs.first(where: { $0.id == oldSelectedId }) {
+            retiringWorkspace.prepareForUnmount()
+        }
 
 #if DEBUG
         if let snapshot = tabManager.debugCurrentWorkspaceSwitchSnapshot() {
@@ -3145,14 +3155,13 @@ struct ContentView: View {
         workspaceHandoffFallbackTask = nil
         let retiring = retiringWorkspaceId
 
-        // Hide portal-hosted views for the retiring workspace BEFORE clearing
-        // retiringWorkspaceId. Once cleared, reconcileMountedWorkspaceIds unmounts
-        // the workspace — but dismantleNSView intentionally doesn't hide portal views
-        // during transient rebuilds. Hiding here prevents stale terminal/browser
-        // portals from covering the newly selected workspace.
+        // Prepare the retiring workspace BEFORE clearing retiringWorkspaceId. Once
+        // cleared, reconcileMountedWorkspaceIds unmounts the workspace — but
+        // SwiftUI can skip the final Bonsplit visibility update on fast handoffs.
+        // Explicit cleanup here prevents stale split chrome and portal-backed
+        // surfaces from persisting over the newly selected workspace.
         if let retiring, let workspace = tabManager.tabs.first(where: { $0.id == retiring }) {
-            workspace.hideAllTerminalPortalViews()
-            workspace.hideAllBrowserPortalViews()
+            workspace.prepareForUnmount()
         }
 
         retiringWorkspaceId = nil
