@@ -9108,6 +9108,39 @@ struct CMUXCLI {
         let surfaceId: String?
     }
 
+    private func claudeTeamsContext(
+        from rawContext: [String: Any],
+        socketPath: String
+    ) -> ClaudeTeamsFocusedContext? {
+        let workspaceId = (rawContext["workspace_id"] as? String)
+            ?? (rawContext["workspace_ref"] as? String)
+        let paneId = (rawContext["pane_id"] as? String)
+            ?? (rawContext["pane_ref"] as? String)
+
+        guard let workspaceId, let paneId else {
+            return nil
+        }
+
+        let paneHandle = paneId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !paneHandle.isEmpty else {
+            return nil
+        }
+
+        let windowId = (rawContext["window_id"] as? String)
+            ?? (rawContext["window_ref"] as? String)
+        let surfaceId = (rawContext["surface_id"] as? String)
+            ?? (rawContext["surface_ref"] as? String)
+
+        return ClaudeTeamsFocusedContext(
+            socketPath: socketPath,
+            workspaceId: workspaceId,
+            windowId: windowId,
+            paneHandle: paneHandle,
+            paneId: rawContext["pane_id"] as? String,
+            surfaceId: surfaceId
+        )
+    }
+
     private func claudeTeamsCallerContextFromEnvironment(
         processEnvironment: [String: String]
     ) -> [String: Any]? {
@@ -9121,6 +9154,62 @@ struct CMUXCLI {
             caller["surface_id"] = surfaceRaw
         }
         return caller.isEmpty ? nil : caller
+    }
+
+    private func claudeTeamsNormalizedTTY(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("/dev/") {
+            return String(trimmed.dropFirst("/dev/".count))
+        }
+        return trimmed
+    }
+
+    private func claudeTeamsCurrentTTY(processEnvironment: [String: String]) -> String? {
+        if let overrideTTY = claudeTeamsNormalizedTTY(processEnvironment["CMUX_CLAUDE_TEAMS_TTY"]) {
+            return overrideTTY
+        }
+        for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+            guard let rawTTY = ttyname(fd) else { continue }
+            if let tty = claudeTeamsNormalizedTTY(String(cString: rawTTY)) {
+                return tty
+            }
+        }
+        return nil
+    }
+
+    private func claudeTeamsTTYContext(
+        processEnvironment: [String: String],
+        socketPath: String,
+        client: SocketClient
+    ) -> ClaudeTeamsFocusedContext? {
+        guard let tty = claudeTeamsCurrentTTY(processEnvironment: processEnvironment) else {
+            return nil
+        }
+
+        let workspaceFilter = processEnvironment["CMUX_WORKSPACE_ID"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = try? client.sendV2(method: "debug.terminals")
+        let terminals = payload?["terminals"] as? [[String: Any]] ?? []
+
+        let ttyMatches = terminals.filter { terminal in
+            claudeTeamsNormalizedTTY(terminal["tty"] as? String) == tty
+        }
+        guard !ttyMatches.isEmpty else {
+            return nil
+        }
+
+        let preferredTerminal = ttyMatches.first { terminal in
+            guard let workspaceFilter else { return false }
+            return (terminal["workspace_id"] as? String) == workspaceFilter
+        } ?? ttyMatches.first
+
+        guard let preferredTerminal else {
+            return nil
+        }
+
+        return claudeTeamsContext(from: preferredTerminal, socketPath: socketPath)
     }
 
     private func claudeTeamsResolvedSocketPath(processEnvironment: [String: String]) -> String {
@@ -9171,6 +9260,13 @@ struct CMUXCLI {
                 identifyParams["caller"] = caller
             }
             let payload = try client.sendV2(method: "system.identify", params: identifyParams)
+            if let ttyContext = claudeTeamsTTYContext(
+                processEnvironment: processEnvironment,
+                socketPath: socketPath,
+                client: client
+            ) {
+                return ttyContext
+            }
             let focused = payload["focused"] as? [String: Any] ?? [:]
             let caller = payload["caller"] as? [String: Any] ?? [:]
             let preferredContext: [String: Any] = {
@@ -9182,33 +9278,7 @@ struct CMUXCLI {
                 return caller
             }()
 
-            let workspaceId = (preferredContext["workspace_id"] as? String)
-                ?? (preferredContext["workspace_ref"] as? String)
-            let paneId = (preferredContext["pane_id"] as? String)
-                ?? (preferredContext["pane_ref"] as? String)
-
-            guard let workspaceId, let paneId else {
-                return nil
-            }
-
-            let paneHandle = paneId.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !paneHandle.isEmpty else {
-                return nil
-            }
-
-            let windowId = (preferredContext["window_id"] as? String)
-                ?? (preferredContext["window_ref"] as? String)
-            let surfaceId = (preferredContext["surface_id"] as? String)
-                ?? (preferredContext["surface_ref"] as? String)
-
-            return ClaudeTeamsFocusedContext(
-                socketPath: socketPath,
-                workspaceId: workspaceId,
-                windowId: windowId,
-                paneHandle: paneHandle,
-                paneId: preferredContext["pane_id"] as? String,
-                surfaceId: surfaceId
-            )
+            return claudeTeamsContext(from: preferredContext, socketPath: socketPath)
         } catch {
             client.close()
             return nil
