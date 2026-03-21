@@ -3884,6 +3884,15 @@ final class WorkspaceRemoteSessionController {
             .appendingPathComponent("cmuxd-remote", isDirectory: false)
     }
 
+    struct LocalRemoteDaemonBuildPlan {
+        let executable: String
+        let arguments: [String]
+        let environment: [String: String]
+        let currentDirectory: URL
+        let builtBinary: URL
+        let outputURL: URL
+    }
+
     private static func sha256Hex(forFile url: URL) throws -> String {
         let data = try Data(contentsOf: url)
         let digest = SHA256.hash(data: data)
@@ -4010,48 +4019,41 @@ final class WorkspaceRemoteSessionController {
                 NSLocalizedDescriptionKey: "cannot locate cmux repo root for dev-only cmuxd-remote build fallback",
             ])
         }
-        let daemonRoot = repoRoot.appendingPathComponent("daemon/remote", isDirectory: true)
-        let goModPath = daemonRoot.appendingPathComponent("go.mod").path
-        guard FileManager.default.fileExists(atPath: goModPath) else {
-            throw NSError(domain: "cmux.remote.daemon", code: 21, userInfo: [
-                NSLocalizedDescriptionKey: "missing daemon module at \(goModPath)",
-            ])
-        }
-        guard let goBinary = Self.which("go") else {
-            throw NSError(domain: "cmux.remote.daemon", code: 22, userInfo: [
-                NSLocalizedDescriptionKey: "go is required for the dev-only cmuxd-remote build fallback",
-            ])
-        }
+        let plan = try Self.localRemoteDaemonBuildPlan(
+            repoRoot: repoRoot,
+            goOS: goOS,
+            goArch: goArch,
+            version: version
+        )
+        try FileManager.default.createDirectory(at: plan.outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        let output = Self.versionedRemoteDaemonBuildURL(goOS: goOS, goArch: goArch, version: version)
-        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-        var env = ProcessInfo.processInfo.environment
-        env["GOOS"] = goOS
-        env["GOARCH"] = goArch
-        env["CGO_ENABLED"] = "0"
-        let ldflags = "-s -w -X main.version=\(version)"
         let result = try runProcess(
-            executable: goBinary,
-            arguments: ["build", "-trimpath", "-buildvcs=false", "-ldflags", ldflags, "-o", output.path, "./cmd/cmuxd-remote"],
-            environment: env,
-            currentDirectory: daemonRoot,
+            executable: plan.executable,
+            arguments: plan.arguments,
+            environment: plan.environment,
+            currentDirectory: plan.currentDirectory,
             stdin: nil,
             timeout: 90
         )
         guard result.status == 0 else {
-            let detail = Self.bestErrorLine(stderr: result.stderr, stdout: result.stdout) ?? "go build failed with status \(result.status)"
+            let detail = Self.bestErrorLine(stderr: result.stderr, stdout: result.stdout) ?? "zig build failed with status \(result.status)"
             throw NSError(domain: "cmux.remote.daemon", code: 23, userInfo: [
                 NSLocalizedDescriptionKey: "failed to build cmuxd-remote: \(detail)",
             ])
         }
-        guard FileManager.default.isExecutableFile(atPath: output.path) else {
+        if FileManager.default.fileExists(atPath: plan.outputURL.path) {
+            try? FileManager.default.removeItem(at: plan.outputURL)
+        }
+        try FileManager.default.copyItem(at: plan.builtBinary, to: plan.outputURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: plan.outputURL.path)
+
+        guard FileManager.default.isExecutableFile(atPath: plan.outputURL.path) else {
             throw NSError(domain: "cmux.remote.daemon", code: 24, userInfo: [
                 NSLocalizedDescriptionKey: "cmuxd-remote build output is not executable",
             ])
         }
-        debugLog("remote.build.output path=\(output.path)")
-        return output
+        debugLog("remote.build.output path=\(plan.outputURL.path)")
+        return plan.outputURL
     }
 
     private func uploadRemoteDaemonBinaryLocked(localBinary: URL, remotePath: String) throws {
@@ -4402,7 +4404,12 @@ final class WorkspaceRemoteSessionController {
             }
 
             let relativePath = fileURL.path.replacingOccurrences(of: daemonRoot.path + "/", with: "")
-            if relativePath == "go.mod" || relativePath == "go.sum" || relativePath.hasSuffix(".go") {
+            if relativePath == "go.mod" ||
+                relativePath == "go.sum" ||
+                relativePath == "zig/build.zig" ||
+                relativePath == "zig/build.zig.zon" ||
+                relativePath.hasSuffix(".go") ||
+                relativePath.hasSuffix(".zig") {
                 relativePaths.append(relativePath)
             }
         }
@@ -4439,11 +4446,74 @@ final class WorkspaceRemoteSessionController {
         }
     }
 
+    static func localRemoteDaemonBuildPlan(
+        repoRoot: URL,
+        goOS: String,
+        goArch: String,
+        version: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) throws -> LocalRemoteDaemonBuildPlan {
+        let daemonRoot = repoRoot.appendingPathComponent("daemon/remote/zig", isDirectory: true)
+        let buildZigPath = daemonRoot.appendingPathComponent("build.zig", isDirectory: false).path
+        guard fileManager.fileExists(atPath: buildZigPath) else {
+            throw NSError(domain: "cmux.remote.daemon", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "missing daemon build at \(buildZigPath)",
+            ])
+        }
+        guard let zigBinary = which("zig", environment: environment, fileManager: fileManager) else {
+            throw NSError(domain: "cmux.remote.daemon", code: 22, userInfo: [
+                NSLocalizedDescriptionKey: "zig is required for the dev-only cmuxd-remote build fallback",
+            ])
+        }
+        guard let target = remoteDaemonZigTarget(goOS: goOS, goArch: goArch) else {
+            throw NSError(domain: "cmux.remote.daemon", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "unsupported cmuxd-remote target \(goOS)-\(goArch)",
+            ])
+        }
+        return LocalRemoteDaemonBuildPlan(
+            executable: zigBinary,
+            arguments: [
+                "build",
+                "-Doptimize=ReleaseSafe",
+                "-Dtarget=\(target)",
+                "-Dversion=\(version)",
+            ],
+            environment: environment,
+            currentDirectory: daemonRoot,
+            builtBinary: daemonRoot.appendingPathComponent("zig-out/bin/cmuxd-remote", isDirectory: false),
+            outputURL: versionedRemoteDaemonBuildURL(goOS: goOS, goArch: goArch, version: version)
+        )
+    }
+
+    private static func remoteDaemonZigTarget(goOS: String, goArch: String) -> String? {
+        switch (goOS, goArch) {
+        case ("darwin", "arm64"):
+            return "aarch64-macos"
+        case ("darwin", "amd64"):
+            return "x86_64-macos"
+        case ("linux", "arm64"):
+            return "aarch64-linux-gnu"
+        case ("linux", "amd64"):
+            return "x86_64-linux-gnu"
+        default:
+            return nil
+        }
+    }
+
     private static func which(_ executable: String) -> String? {
-        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        which(executable, environment: ProcessInfo.processInfo.environment, fileManager: .default)
+    }
+
+    static func which(
+        _ executable: String,
+        environment: [String: String],
+        fileManager: FileManager
+    ) -> String? {
+        let path = environment["PATH"] ?? ""
         for component in path.split(separator: ":") {
             let candidate = String(component) + "/" + executable
-            if FileManager.default.isExecutableFile(atPath: candidate) {
+            if fileManager.isExecutableFile(atPath: candidate) {
                 return candidate
             }
         }
@@ -4471,14 +4541,21 @@ final class WorkspaceRemoteSessionController {
             candidates.append(executable.deletingLastPathComponent())
             candidates.append(executable.deletingLastPathComponent().deletingLastPathComponent())
         }
+        return findRepoRoot(startingAtCandidates: candidates, fileManager: .default)
+    }
 
-        let fm = FileManager.default
+    static func findRepoRoot(
+        startingAtCandidates candidates: [URL],
+        fileManager: FileManager
+    ) -> URL? {
         for base in candidates {
             var cursor = base.standardizedFileURL
             for _ in 0..<10 {
-                let marker = cursor.appendingPathComponent("daemon/remote/go.mod").path
-                if fm.fileExists(atPath: marker) {
-                    return cursor
+                for marker in remoteDaemonRepoMarkers {
+                    let markerPath = cursor.appendingPathComponent(marker, isDirectory: false).path
+                    if fileManager.fileExists(atPath: markerPath) {
+                        return cursor
+                    }
                 }
                 let parent = cursor.deletingLastPathComponent()
                 if parent.path == cursor.path {
@@ -4489,6 +4566,11 @@ final class WorkspaceRemoteSessionController {
         }
         return nil
     }
+
+    private static let remoteDaemonRepoMarkers = [
+        "daemon/remote/zig/build.zig",
+        "daemon/remote/go.mod",
+    ]
 
     private static func bestErrorLine(stderr: String, stdout: String = "") -> String? {
         if let stderrLine = meaningfulErrorLine(in: stderr) {

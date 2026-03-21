@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const cli_relay = @import("cli_relay.zig");
 const serve_tls = @import("serve_tls.zig");
 const ticket_auth = @import("ticket_auth.zig");
@@ -45,7 +46,7 @@ fn run(args: []const []const u8) !u8 {
 
     const command = args[1];
     if (std.mem.eql(u8, command, "version")) {
-        try stdout.print("dev\n", .{});
+        try stdout.print("{s}\n", .{build_options.version});
         try stdout.flush();
         return 0;
     }

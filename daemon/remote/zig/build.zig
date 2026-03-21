@@ -3,14 +3,22 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const version = b.option([]const u8, "version", "daemon version string") orelse "dev";
+
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", version);
 
     const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    mod.addOptions("build_options", build_options);
 
-    if (b.lazyDependency("ghostty", .{})) |dep| {
+    if (b.lazyDependency("ghostty", .{
+        .target = target,
+        .optimize = optimize,
+    })) |dep| {
         mod.addImport("ghostty-vt", dep.module("ghostty-vt"));
     }
 

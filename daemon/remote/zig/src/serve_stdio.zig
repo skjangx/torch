@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const json_rpc = @import("json_rpc.zig");
 const proxy_streams = @import("proxy_streams.zig");
 const pty_host = @import("pty_host.zig");
@@ -179,7 +180,7 @@ pub fn dispatch(state: *State, req: *const json_rpc.Request) ![]u8 {
             .ok = true,
             .result = .{
                 .name = "cmuxd-remote",
-                .version = "dev",
+                .version = build_options.version,
                 .capabilities = .{
                     "session.basic",
                     "session.resize.min",

@@ -815,6 +815,57 @@ final class WorkspaceRemoteDaemonManifestTests: XCTestCase {
     }
 }
 
+final class WorkspaceRemoteDaemonLocalBuildTests: XCTestCase {
+    func testFindRepoRootAcceptsZigDaemonMarkerWithoutGoModule() throws {
+        let repoRoot = try makeFakeRemoteDaemonRepo()
+        defer { try? FileManager.default.removeItem(at: repoRoot) }
+
+        let detected = Workspace.findRepoRoot(
+            startingAtCandidates: [repoRoot],
+            fileManager: .default
+        )
+
+        XCTAssertEqual(detected?.standardizedFileURL, repoRoot.standardizedFileURL)
+    }
+
+    func testLocalRemoteDaemonBuildPlanUsesZigToolchain() throws {
+        let repoRoot = try makeFakeRemoteDaemonRepo()
+        defer { try? FileManager.default.removeItem(at: repoRoot) }
+
+        let binDir = repoRoot.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
+        let zigPath = binDir.appendingPathComponent("zig", isDirectory: false)
+        try "#!/bin/sh\nexit 0\n".write(to: zigPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: zigPath.path)
+
+        let plan = try Workspace.localRemoteDaemonBuildPlan(
+            repoRoot: repoRoot,
+            goOS: "linux",
+            goArch: "amd64",
+            version: "0.62.0-dev",
+            environment: ["PATH": "\(binDir.path):/usr/bin:/bin:/usr/sbin:/sbin"],
+            fileManager: .default
+        )
+
+        XCTAssertEqual(URL(fileURLWithPath: plan.executable).lastPathComponent, "zig")
+        XCTAssertEqual(plan.currentDirectory.standardizedFileURL, repoRoot.appendingPathComponent("daemon/remote/zig", isDirectory: true).standardizedFileURL)
+        XCTAssertTrue(plan.arguments.contains("-Dtarget=x86_64-linux-gnu"))
+    }
+
+    private func makeFakeRemoteDaemonRepo() throws -> URL {
+        let repoRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let zigRoot = repoRoot.appendingPathComponent("daemon/remote/zig", isDirectory: true)
+        try FileManager.default.createDirectory(at: zigRoot, withIntermediateDirectories: true)
+        try "// fake zig build file\n".write(
+            to: zigRoot.appendingPathComponent("build.zig", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+        return repoRoot
+    }
+}
+
 final class RemoteLoopbackHTTPRequestRewriterTests: XCTestCase {
     func testRewritesLoopbackAliasHostHeadersToLocalhost() {
         let original = Data(
