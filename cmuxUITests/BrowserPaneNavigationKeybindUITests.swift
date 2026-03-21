@@ -1392,24 +1392,28 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
     }
 
     private func browserWaitForArrowHarness(surfaceId: String) -> (terminationStatus: Int32, stdout: String, stderr: String) {
-        let timeoutMs = 8_000
-        let response = browserSocketJSON(
-            method: "browser.wait",
-            params: [
-                "surface_id": surfaceId,
-                "timeout_ms": timeoutMs,
-                "function": "String(document.readyState || '') === 'complete' && !!(document.body || document.documentElement)"
-            ],
-            responseTimeout: (Double(timeoutMs) / 1000.0) + 3.0
-        )
-        guard let response else {
-            return (terminationStatus: 1, stdout: "", stderr: "No browser.wait response")
+        var lastValue = "nil"
+        let didBecomeReady = waitForCondition(timeout: 8.0) {
+            guard let value = self.browserEval(
+                surfaceId: surfaceId,
+                script: """
+                (() => {
+                  const ready = String(document.readyState || '') === 'complete';
+                  const hasRoot = !!(document.body || document.documentElement);
+                  return ready && hasRoot ? '1' : '0';
+                })()
+                """
+            ) else {
+                lastValue = "nil"
+                return false
+            }
+            lastValue = value
+            return value == "1"
         }
-        guard (response["ok"] as? Bool) == true else {
-            return (terminationStatus: 1, stdout: "", stderr: browserSocketErrorDescription(response))
+        if didBecomeReady {
+            return (terminationStatus: 0, stdout: lastValue, stderr: "")
         }
-        let stdout = browserSocketResultDescription(response) ?? ""
-        return (terminationStatus: 0, stdout: stdout, stderr: "")
+        return (terminationStatus: 1, stdout: lastValue, stderr: "DOM readiness check did not pass")
     }
 
     private func waitForBrowserArrowReport(
