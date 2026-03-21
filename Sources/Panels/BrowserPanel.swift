@@ -3017,10 +3017,16 @@ final class BrowserPanel: Panel, ObservableObject {
         webViewObservers.append(titleObserver)
 
         // Loading state
-        let loadingObserver = webView.observe(\.isLoading, options: [.new]) { [weak self] webView, _ in
+        // Capture the KVO-provided value at observation time rather than reading
+        // webView.isLoading inside the deferred Task. For fast navigations (e.g.
+        // back-forward cache), isLoading can flip true→false before the first Task
+        // runs, causing handleWebViewLoadingChanged(true) to be missed entirely.
+        // That skips favicon/loading-state cleanup and leaves stale icons visible.
+        let loadingObserver = webView.observe(\.isLoading, options: [.new]) { [weak self] webView, change in
+            let newValue = change.newValue ?? webView.isLoading
             Task { @MainActor in
                 guard let self, self.isCurrentWebView(webView, instanceID: observedWebViewInstanceID) else { return }
-                self.handleWebViewLoadingChanged(webView.isLoading)
+                self.handleWebViewLoadingChanged(newValue)
             }
         }
         webViewObservers.append(loadingObserver)
@@ -3298,6 +3304,27 @@ final class BrowserPanel: Panel, ObservableObject {
             }
             guard self.isCurrentWebView(webView, instanceID: refreshWebViewInstanceID) else { return }
             guard self.isCurrentFaviconRefresh(generation: refreshGeneration) else { return }
+
+            // SPAs often inject <link rel="icon"> via JavaScript after the initial
+            // HTML loads. If no link tag was found, wait briefly and retry once to
+            // give client-side scripts time to add the tag.
+            if discoveredURL == nil {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                guard self.isCurrentWebView(webView, instanceID: refreshWebViewInstanceID) else { return }
+                guard self.isCurrentFaviconRefresh(generation: refreshGeneration) else { return }
+                if let href = await self.evaluateJavaScriptString(
+                    js,
+                    in: webView,
+                    timeoutNanoseconds: 400_000_000
+                ) {
+                    let trimmed = href.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty, let u = URL(string: trimmed) {
+                        discoveredURL = u
+                    }
+                }
+                guard self.isCurrentWebView(webView, instanceID: refreshWebViewInstanceID) else { return }
+                guard self.isCurrentFaviconRefresh(generation: refreshGeneration) else { return }
+            }
 
             let fallbackURL = URL(string: "/favicon.ico", relativeTo: pageURL)
             let iconURL = discoveredURL ?? fallbackURL
