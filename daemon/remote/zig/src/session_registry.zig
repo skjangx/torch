@@ -55,9 +55,16 @@ pub const Registry = struct {
         self.sessions.deinit();
     }
 
-    pub fn open(self: *Registry, cols: u16, rows: u16) !struct { session_id: []const u8, attachment_id: []const u8 } {
-        const session_id = try std.fmt.allocPrint(self.alloc, "sess-{d}", .{self.next_session_id});
-        self.next_session_id += 1;
+    pub fn open(self: *Registry, maybe_session_id: ?[]const u8, cols: u16, rows: u16) !struct { session_id: []const u8, attachment_id: []const u8 } {
+        const session_id = if (maybe_session_id) |requested| blk: {
+            if (self.sessions.contains(requested)) return error.SessionAlreadyExists;
+            break :blk try self.alloc.dupe(u8, requested);
+        } else blk: {
+            const generated = try std.fmt.allocPrint(self.alloc, "sess-{d}", .{self.next_session_id});
+            self.next_session_id += 1;
+            break :blk generated;
+        };
+        errdefer self.alloc.free(session_id);
 
         var session = SessionState{
             .attachments = std.StringHashMap(AttachmentState).init(self.alloc),
@@ -69,8 +76,8 @@ pub const Registry = struct {
         try self.sessions.put(session_id, session);
 
         return .{
-            .session_id = session_id,
-            .attachment_id = attachment_id,
+            .session_id = try self.alloc.dupe(u8, session_id),
+            .attachment_id = try self.alloc.dupe(u8, attachment_id),
         };
     }
 
@@ -88,9 +95,9 @@ pub const Registry = struct {
             return try self.alloc.dupe(u8, owned);
         }
 
-        const opened = try self.open(0, 0);
+        const opened = try self.open(null, 0, 0);
+        defer self.alloc.free(opened.attachment_id);
         self.detach(opened.session_id, opened.attachment_id) catch {};
-        self.alloc.free(opened.attachment_id);
         return opened.session_id;
     }
 
@@ -189,7 +196,7 @@ test "open allocates session and attachment ids" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
 
-    const opened = try registry.open(120, 40);
+    const opened = try registry.open(null, 120, 40);
     defer std.testing.allocator.free(opened.session_id);
     defer std.testing.allocator.free(opened.attachment_id);
 
@@ -201,7 +208,7 @@ test "attach and resize recompute smallest screen wins" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
 
-    const opened = try registry.open(120, 40);
+    const opened = try registry.open(null, 120, 40);
     defer std.testing.allocator.free(opened.session_id);
     defer std.testing.allocator.free(opened.attachment_id);
 
@@ -219,7 +226,7 @@ test "detach preserves last known size" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
 
-    const opened = try registry.open(120, 40);
+    const opened = try registry.open(null, 120, 40);
     defer std.testing.allocator.free(opened.session_id);
     defer std.testing.allocator.free(opened.attachment_id);
 
@@ -238,7 +245,7 @@ test "status attachments are sorted by id" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
 
-    const opened = try registry.open(120, 40);
+    const opened = try registry.open(null, 120, 40);
     defer std.testing.allocator.free(opened.session_id);
     defer std.testing.allocator.free(opened.attachment_id);
 
@@ -257,10 +264,26 @@ test "close removes session from registry" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
 
-    const opened = try registry.open(120, 40);
+    const opened = try registry.open(null, 120, 40);
     defer std.testing.allocator.free(opened.session_id);
     defer std.testing.allocator.free(opened.attachment_id);
 
     try registry.close(opened.session_id);
     try std.testing.expectError(error.SessionNotFound, registry.status(opened.session_id));
+}
+
+test "ensure without id leaves session attachable" {
+    var registry = Registry.init(std.testing.allocator);
+    defer registry.deinit();
+
+    const session_id = try registry.ensure(null);
+    defer std.testing.allocator.free(session_id);
+
+    try registry.attach(session_id, "att-fixture", 120, 40);
+
+    var status = try registry.status(session_id);
+    defer status.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), status.attachments.len);
+    try std.testing.expectEqualStrings("att-fixture", status.attachments[0].attachment_id);
 }

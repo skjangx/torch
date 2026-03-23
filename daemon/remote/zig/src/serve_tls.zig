@@ -1,7 +1,8 @@
 const std = @import("std");
 const tls = @import("tls");
 const json_rpc = @import("json_rpc.zig");
-const serve_stdio = @import("serve_stdio.zig");
+const server_core = @import("server_core.zig");
+const session_service = @import("session_service.zig");
 const ticket_auth = @import("ticket_auth.zig");
 
 pub const Config = struct {
@@ -21,8 +22,8 @@ pub fn serve(cfg: Config) !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var state = serve_stdio.State.init(alloc);
-    defer state.deinit();
+    var service = session_service.Service.init(alloc);
+    defer service.deinit();
 
     var verifier = ticket_auth.TicketVerifier.init(alloc, cfg.server_id, cfg.ticket_secret);
     defer verifier.deinit();
@@ -36,13 +37,13 @@ pub fn serve(cfg: Config) !void {
     while (true) {
         var conn = try server.accept();
         defer conn.stream.close();
-        serveConn(alloc, &state, &verifier, &auth, conn.stream) catch {};
+        serveConn(alloc, &service, &verifier, &auth, conn.stream) catch {};
     }
 }
 
 fn serveConn(
     alloc: std.mem.Allocator,
-    state: *serve_stdio.State,
+    service: *session_service.Service,
     verifier: *ticket_auth.TicketVerifier,
     auth: *tls.config.CertKeyPair,
     stream: std.net.Stream,
@@ -90,7 +91,7 @@ fn serveConn(
             continue;
         }
 
-        const response = try serve_stdio.dispatch(state, &req);
+        const response = try server_core.dispatch(service, &req);
         defer alloc.free(response);
         try authorizer.observe(&req, response);
         try tls_conn.writeAll(response);
