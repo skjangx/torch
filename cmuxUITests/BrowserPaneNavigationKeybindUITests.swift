@@ -822,7 +822,7 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         let baselineDownCount = Int(baselineDownSnapshot["browserArrowDownCount"] ?? "") ?? -1
 
         simulateShortcut("up", app: app)
-        guard let baselineUpSnapshot = waitForDataSnapshot(
+        guard waitForDataMatch(
             timeout: 5.0,
             predicate: { data in
                 data["browserArrowActiveElementId"] == textareaId &&
@@ -833,8 +833,6 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             XCTFail("Expected baseline Up Arrow to reach the textarea. data=\(String(describing: loadData()))")
             return
         }
-        let baselineUpCount = Int(baselineUpSnapshot["browserArrowUpCount"] ?? "") ?? -1
-
         simulateShortcut("cmdShiftDown", app: app)
         guard let baselineCommandShiftDownSnapshot = waitForDataSnapshot(
             timeout: 5.0,
@@ -861,6 +859,8 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             XCTFail("Expected baseline Cmd+Shift+Up to reach the textarea. data=\(String(describing: loadData()))")
             return
         }
+        let baselineDownCountAfterModifiers = Int(baselineCommandShiftUpSnapshot["browserArrowDownCount"] ?? "") ?? -1
+        let baselineUpCountAfterModifiers = Int(baselineCommandShiftUpSnapshot["browserArrowUpCount"] ?? "") ?? -1
         let baselineCommandShiftUpCount = Int(baselineCommandShiftUpSnapshot["browserArrowCommandShiftUpCount"] ?? "") ?? -1
 
         app.typeKey("l", modifierFlags: [.command])
@@ -893,8 +893,8 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             timeout: 5.0,
             predicate: { data in
                 data["browserArrowActiveElementId"] == textareaId &&
-                    data["browserArrowDownCount"] == "\(baselineDownCount + 1)" &&
-                    data["browserArrowUpCount"] == "\(baselineUpCount)" &&
+                    data["browserArrowDownCount"] == "\(baselineDownCountAfterModifiers + 1)" &&
+                    data["browserArrowUpCount"] == "\(baselineUpCountAfterModifiers)" &&
                     data["browserArrowCommandShiftDownCount"] == "\(baselineCommandShiftDownCount)" &&
                     data["browserArrowCommandShiftUpCount"] == "\(baselineCommandShiftUpCount)"
             }
@@ -910,7 +910,7 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             predicate: { data in
                 data["browserArrowActiveElementId"] == textareaId &&
                     data["browserArrowDownCount"] == "\(postCmdLDownCount)" &&
-                    data["browserArrowUpCount"] == "\(baselineUpCount + 1)"
+                    data["browserArrowUpCount"] == "\(baselineUpCountAfterModifiers + 1)"
             }
         ) else {
             XCTFail("Expected Up Arrow after Cmd+L to reach the textarea. data=\(String(describing: loadData()))")
@@ -1051,7 +1051,7 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         let baselineDownCount = Int(baselineDownSnapshot["browserContentEditableDownCount"] ?? "") ?? -1
 
         simulateShortcut("up", app: app)
-        guard let baselineUpSnapshot = waitForDataSnapshot(
+        guard waitForDataMatch(
             timeout: 5.0,
             predicate: { data in
                 data["browserContentEditableActiveElementId"] == editorId &&
@@ -1062,8 +1062,6 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             XCTFail("Expected baseline Up Arrow to reach the contenteditable fixture. data=\(String(describing: loadData()))")
             return
         }
-        let baselineUpCount = Int(baselineUpSnapshot["browserContentEditableUpCount"] ?? "") ?? -1
-
         simulateShortcut("cmdShiftDown", app: app)
         guard let baselineCommandShiftDownSnapshot = waitForDataSnapshot(
             timeout: 5.0,
@@ -1090,6 +1088,8 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             XCTFail("Expected baseline Cmd+Shift+Up to reach the contenteditable fixture. data=\(String(describing: loadData()))")
             return
         }
+        let baselineDownCountAfterModifiers = Int(baselineCommandShiftUpSnapshot["browserContentEditableDownCount"] ?? "") ?? -1
+        let baselineUpCountAfterModifiers = Int(baselineCommandShiftUpSnapshot["browserContentEditableUpCount"] ?? "") ?? -1
         let baselineCommandShiftUpCount = Int(baselineCommandShiftUpSnapshot["browserContentEditableCommandShiftUpCount"] ?? "") ?? -1
 
         app.typeKey("l", modifierFlags: [.command])
@@ -1122,8 +1122,8 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             timeout: 5.0,
             predicate: { data in
                 data["browserContentEditableActiveElementId"] == editorId &&
-                    data["browserContentEditableDownCount"] == "\(baselineDownCount + 1)" &&
-                    data["browserContentEditableUpCount"] == "\(baselineUpCount)" &&
+                    data["browserContentEditableDownCount"] == "\(baselineDownCountAfterModifiers + 1)" &&
+                    data["browserContentEditableUpCount"] == "\(baselineUpCountAfterModifiers)" &&
                     data["browserContentEditableCommandShiftDownCount"] == "\(baselineCommandShiftDownCount)" &&
                     data["browserContentEditableCommandShiftUpCount"] == "\(baselineCommandShiftUpCount)"
             }
@@ -1139,7 +1139,7 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             predicate: { data in
                 data["browserContentEditableActiveElementId"] == editorId &&
                     data["browserContentEditableDownCount"] == "\(postCmdLDownCount)" &&
-                    data["browserContentEditableUpCount"] == "\(baselineUpCount + 1)"
+                    data["browserContentEditableUpCount"] == "\(baselineUpCountAfterModifiers + 1)"
             }
         ) else {
             XCTFail("Expected Up Arrow after Cmd+L to reach the contenteditable fixture. data=\(String(describing: loadData()))")
