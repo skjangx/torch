@@ -3273,3 +3273,84 @@ final class BrowserOmnibarFocusPolicyTests: XCTestCase {
         )
     }
 }
+
+final class BrowserWebViewClickFocusPolicyTests: XCTestCase {
+    func testDismissesOmnibarWhenLocalAddressBarStateIsFocused() {
+        let panelId = UUID()
+
+        XCTAssertTrue(
+            browserWebViewClickShouldDismissOmnibar(
+                localAddressBarFocused: true,
+                focusedAddressBarPanelId: nil,
+                pendingAddressBarFocusRequestId: nil,
+                panelId: panelId
+            )
+        )
+    }
+
+    func testDismissesOmnibarWhenAppFocusStateStillPointsAtThisPanel() {
+        let panelId = UUID()
+
+        XCTAssertTrue(
+            browserWebViewClickShouldDismissOmnibar(
+                localAddressBarFocused: false,
+                focusedAddressBarPanelId: panelId,
+                pendingAddressBarFocusRequestId: nil,
+                panelId: panelId
+            )
+        )
+    }
+
+    func testDismissesOmnibarWhenAddressBarFocusRequestIsStillPending() {
+        let panelId = UUID()
+
+        XCTAssertTrue(
+            browserWebViewClickShouldDismissOmnibar(
+                localAddressBarFocused: false,
+                focusedAddressBarPanelId: nil,
+                pendingAddressBarFocusRequestId: UUID(),
+                panelId: panelId
+            )
+        )
+    }
+
+    func testDoesNotDismissOmnibarForAnotherPanelsFocusedAddressBar() {
+        let panelId = UUID()
+
+        XCTAssertFalse(
+            browserWebViewClickShouldDismissOmnibar(
+                localAddressBarFocused: false,
+                focusedAddressBarPanelId: UUID(),
+                pendingAddressBarFocusRequestId: nil,
+                panelId: panelId
+            )
+        )
+    }
+
+    func testPromotesWebViewFocusWhenPanelIsFocused() {
+        XCTAssertTrue(
+            browserWebViewClickShouldPromoteWebViewFocus(
+                isPanelFocused: true,
+                shouldDismissOmnibar: false
+            )
+        )
+    }
+
+    func testPromotesWebViewFocusWhenOmnibarStillOwnsFocus() {
+        XCTAssertTrue(
+            browserWebViewClickShouldPromoteWebViewFocus(
+                isPanelFocused: false,
+                shouldDismissOmnibar: true
+            )
+        )
+    }
+
+    func testDoesNotPromoteWebViewFocusWhenPanelIsNotFocusedAndOmnibarDoesNotOwnFocus() {
+        XCTAssertFalse(
+            browserWebViewClickShouldPromoteWebViewFocus(
+                isPanelFocused: false,
+                shouldDismissOmnibar: false
+            )
+        )
+    }
+}

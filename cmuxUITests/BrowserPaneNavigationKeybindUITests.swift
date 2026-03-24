@@ -758,6 +758,10 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             return
         }
 
+        guard let browserPanelId = setup["browserPanelId"], !browserPanelId.isEmpty else {
+            XCTFail("Missing browserPanelId in setup data")
+            return
+        }
         XCTAssertEqual(setup["webInputFocusSeeded"], "true", "Expected page input harness to be seeded before textarea check")
         guard let textareaId = setup["webInputFocusTextareaElementId"], !textareaId.isEmpty else {
             XCTFail("Missing webInputFocusTextareaElementId in setup data")
@@ -862,7 +866,9 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         app.typeKey("l", modifierFlags: [.command])
         XCTAssertTrue(
             waitForDataMatch(timeout: 5.0) { data in
-                data["webViewFocusedAfterAddressBarFocus"] == "false"
+                data["webViewFocusedAfterAddressBarFocus"] == "false" &&
+                    data["webViewFocusedAfterAddressBarFocusPanelId"] == browserPanelId &&
+                    data["browserArrowFocusedAddressBarPanelId"] == browserPanelId
             },
             "Expected Cmd+L to focus omnibar before the textarea click path"
         )
@@ -964,6 +970,7 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         XCTAssertTrue(
             waitForData(
                 keys: [
+                    "browserPanelId",
                     "webInputFocusSeeded",
                     "webContentEditableSeeded",
                     "webContentEditableElementId",
@@ -980,6 +987,10 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             return
         }
 
+        guard let browserPanelId = setup["browserPanelId"], !browserPanelId.isEmpty else {
+            XCTFail("Missing browserPanelId in setup data")
+            return
+        }
         XCTAssertEqual(setup["webInputFocusSeeded"], "true", "Expected test page inputs to be seeded before contenteditable regression check")
         XCTAssertEqual(setup["webContentEditableSeeded"], "true", "Expected contenteditable fixture to be seeded before contenteditable regression check")
         guard let editorId = setup["webContentEditableElementId"], !editorId.isEmpty else {
@@ -1084,7 +1095,9 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         app.typeKey("l", modifierFlags: [.command])
         XCTAssertTrue(
             waitForDataMatch(timeout: 5.0) { data in
-                data["webViewFocusedAfterAddressBarFocus"] == "false"
+                data["webViewFocusedAfterAddressBarFocus"] == "false" &&
+                    data["webViewFocusedAfterAddressBarFocusPanelId"] == browserPanelId &&
+                    data["browserArrowFocusedAddressBarPanelId"] == browserPanelId
             },
             "Expected Cmd+L to focus omnibar before the contenteditable click path"
         )
