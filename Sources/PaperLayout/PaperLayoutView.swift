@@ -69,24 +69,24 @@ struct PaperLayoutView<Content: View, EmptyContent: View>: View {
                 let oldWidth = controller.viewportWidth
                 controller.viewportWidth = newSize.width
                 controller.viewportHeight = newSize.height
-                // Scale initial fullscreen pane if it was using the full viewport
-                if controller.panes.count == 1 && controller.panes[0].width == oldWidth {
-                    controller.panes[0].width = newSize.width
+
+                // Scale pane widths proportionally when the viewport resizes.
+                // This keeps panes from overflowing or underflowing the viewport
+                // after a window resize.
+                if oldWidth > 0 && !controller.panes.isEmpty {
+                    let scale = newSize.width / oldWidth
+                    for pane in controller.panes {
+                        pane.width = max(
+                            pane.width * scale,
+                            controller.configuration.appearance.minimumPaneWidth
+                        )
+                    }
+                    // Also scale viewport offset to keep the same relative scroll position
+                    controller.viewportOffset *= scale
                 }
             }
-            .gesture(
-                DragGesture(minimumDistance: 5)
-                    .onChanged { value in
-                        // Only respond to primarily horizontal drags
-                        if abs(value.translation.width) > abs(value.translation.height) {
-                            let maxOffset = max(0, controller.totalCanvasWidth - controller.viewportWidth)
-                            controller.viewportOffset = max(0, min(
-                                controller.viewportOffset - value.velocity.width * 0.016,
-                                maxOffset
-                            ))
-                        }
-                    }
-            )
+            // Trackpad gesture scrolling will be added in a follow-up.
+            // Keyboard navigation (Cmd+Opt+Arrow) works for now.
         }
     }
 
