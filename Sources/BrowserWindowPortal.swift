@@ -2303,22 +2303,7 @@ final class WindowBrowserPortal: NSObject {
     /// visible split pane during rearrangement; intersecting through ancestor bounds keeps the
     /// portal locked to the pane the user can actually see.
     private func effectiveAnchorFrameInWindow(for anchorView: NSView) -> NSRect {
-        var frameInWindow = anchorView.convert(anchorView.bounds, to: nil)
-        var current = anchorView.superview
-        while let ancestor = current {
-            let ancestorBoundsInWindow = ancestor.convert(ancestor.bounds, to: nil)
-            let finiteAncestorBounds =
-                ancestorBoundsInWindow.origin.x.isFinite &&
-                ancestorBoundsInWindow.origin.y.isFinite &&
-                ancestorBoundsInWindow.size.width.isFinite &&
-                ancestorBoundsInWindow.size.height.isFinite
-            if finiteAncestorBounds {
-                frameInWindow = frameInWindow.intersection(ancestorBoundsInWindow)
-                if frameInWindow.isNull { return .zero }
-            }
-            if ancestor === installedReferenceView { break }
-            current = ancestor.superview
-        }
+        let frameInWindow = anchorView.convert(anchorView.bounds, to: nil)
         return frameInWindow
     }
 

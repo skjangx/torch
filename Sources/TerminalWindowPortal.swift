@@ -928,22 +928,12 @@ final class WindowTerminalPortal: NSObject {
     /// intrinsic-size content overflows; intersecting through ancestor bounds gives the effective
     /// visible rect that should drive portal geometry.
     private func effectiveAnchorFrameInWindow(for anchorView: NSView) -> NSRect {
-        var frameInWindow = anchorView.convert(anchorView.bounds, to: nil)
-        var current = anchorView.superview
-        while let ancestor = current {
-            let ancestorBoundsInWindow = ancestor.convert(ancestor.bounds, to: nil)
-            let finiteAncestorBounds =
-                ancestorBoundsInWindow.origin.x.isFinite &&
-                ancestorBoundsInWindow.origin.y.isFinite &&
-                ancestorBoundsInWindow.size.width.isFinite &&
-                ancestorBoundsInWindow.size.height.isFinite
-            if finiteAncestorBounds {
-                frameInWindow = frameInWindow.intersection(ancestorBoundsInWindow)
-                if frameInWindow.isNull { return .zero }
-            }
-            if ancestor === installedReferenceView { break }
-            current = ancestor.superview
-        }
+        let frameInWindow = anchorView.convert(anchorView.bounds, to: nil)
+        // Paper layout: skip ancestor intersection clipping. The old logic
+        // walked up the ancestor chain and intersected with each ancestor's
+        // bounds, shrinking the frame when a pane was partially off-screen.
+        // With paper layout, we want the full unclamped pane frame and let
+        // the host view's masksToBounds handle visual clipping.
         return frameInWindow
     }
 
