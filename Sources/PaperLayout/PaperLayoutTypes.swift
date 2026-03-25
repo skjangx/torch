@@ -326,10 +326,11 @@ enum TabContextAction: String, CaseIterable, Sendable {
 
 // MARK: - Tab Item (internal mutable representation)
 
-extension UTType {
-    static var paperTabItem: UTType { UTType(exportedAs: "com.manaflow.cmux.papertabitem") }
-    static var paperTabTransfer: UTType { UTType(exportedAs: "com.manaflow.cmux.papertabtransfer", conformingTo: .data) }
-}
+// UTType declarations for drag-and-drop (deferred to V2)
+// extension UTType {
+//     static var paperTabItem: UTType { UTType(exportedAs: "com.manaflow.cmux.papertabitem") }
+//     static var paperTabTransfer: UTType { UTType(exportedAs: "com.manaflow.cmux.papertabtransfer", conformingTo: .data) }
+// }
 
 struct PaperTabItem: Identifiable, Hashable, Codable {
     let id: UUID
@@ -395,13 +396,10 @@ struct PaperTabItem: Identifiable, Hashable, Codable {
     }
 }
 
-extension PaperTabItem: Transferable {
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .paperTabItem)
-    }
-}
+// Transferable conformance deferred to V2 (requires Info.plist UTType declarations)
+// extension PaperTabItem: Transferable { ... }
 
-struct PaperTabTransferData: Codable, Transferable {
+struct PaperTabTransferData: Codable {
     let tab: PaperTabItem
     let sourcePaneId: UUID
     let sourceProcessId: Int32
@@ -414,10 +412,6 @@ struct PaperTabTransferData: Codable, Transferable {
 
     var isFromCurrentProcess: Bool {
         sourceProcessId == Int32(ProcessInfo.processInfo.processIdentifier)
-    }
-
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .paperTabTransfer)
     }
 }
 

@@ -1406,15 +1406,18 @@ final class WindowTerminalPortal: NSObject {
 
         let oldFrame = hostedView.frame
 #if DEBUG
-        // Paper layout debug: log anchor frame every sync to trace X position
-        let anchorFrameInWindow = anchorView.convert(anchorView.bounds, to: nil)
+        // Paper layout debug: log anchor frame with offset compensation
+        let rawAnchorInWin = anchorView.convert(anchorView.bounds, to: nil)
+        let paperOff = PaperLayoutController.currentViewportOffset
         dlog(
             "portal.paper.sync hosted=\(portalDebugToken(hostedView)) " +
-            "anchorInWin=\(portalDebugFrame(anchorFrameInWindow)) " +
-            "frameInHost=\(portalDebugFrame(frameInHost)) " +
-            "target=\(portalDebugFrame(targetFrame)) " +
-            "hide=\(shouldHide ? 1 : 0) outside=\(outsideHostBounds ? 1 : 0) " +
-            "visibleInUI=\(entry.visibleInUI ? 1 : 0)"
+            "rawAnchor=\(Int(rawAnchorInWin.origin.x)),\(Int(rawAnchorInWin.origin.y)) \(Int(rawAnchorInWin.width))x\(Int(rawAnchorInWin.height)) " +
+            "paperOff=\(Int(paperOff)) " +
+            "adjusted=\(Int(rawAnchorInWin.origin.x - paperOff)),\(Int(rawAnchorInWin.origin.y)) " +
+            "fInHost=\(Int(frameInHost.origin.x)),\(Int(frameInHost.origin.y)) \(Int(frameInHost.width))x\(Int(frameInHost.height)) " +
+            "target=\(Int(targetFrame.origin.x)),\(Int(targetFrame.origin.y)) \(Int(targetFrame.width))x\(Int(targetFrame.height)) " +
+            "hostBounds=\(Int(hostBounds.width))x\(Int(hostBounds.height)) " +
+            "hide=\(shouldHide ? 1 : 0) out=\(outsideHostBounds ? 1 : 0) vis=\(entry.visibleInUI ? 1 : 0)"
         )
         let frameWasClamped = hasFiniteFrame && !Self.rectApproximatelyEqual(frameInHost, targetFrame)
         if frameWasClamped {

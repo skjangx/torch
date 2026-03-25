@@ -885,6 +885,16 @@ public final class PaperLayoutController {
     // MARK: - Geometry Change Notification
 
     func notifyGeometryChange(isDragging: Bool = false) {
+#if DEBUG
+        let paneDesc = panes.enumerated().map { (i, p) in
+            let w = p.width.isFinite ? "\(Int(p.width))" : "inf"
+            return "[\(i):\(p.id.id.uuidString.prefix(5)) w=\(w) tabs=\(p.tabs.count)]"
+        }.joined(separator: " ")
+        let vpOff = viewportOffset.isFinite ? "\(Int(viewportOffset))" : "inf"
+        let vpW = viewportWidth.isFinite ? "\(Int(viewportWidth))" : "inf"
+        let canvasW = totalCanvasWidth.isFinite ? "\(Int(totalCanvasWidth))" : "inf"
+        dlog("paper.geometry vpOffset=\(vpOff) vpWidth=\(vpW) canvas=\(canvasW) focus=\(focusedPaneIndex ?? -1) panes=\(paneDesc)")
+#endif
         let snapshot = layoutSnapshot()
         if isDragging {
             if delegate?.paperLayout(self, shouldNotifyDuringDrag: true) == true {
