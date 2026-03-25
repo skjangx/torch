@@ -16,7 +16,7 @@ APP_BUNDLE="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-CEF_VERSION="138.0.60+gd8bc8bd+chromium-138.0.7204.307"
+CEF_VERSION="146.0.6+g68649e2+chromium-146.0.7680.154"
 CEF_PLATFORM="macosarm64"
 CEF_DIST_NAME="cef_binary_${CEF_VERSION}_${CEF_PLATFORM}_minimal"
 CEF_CACHE_DIR="${CMUX_CEF_CACHE_DIR:-$HOME/.cache/cmux/cef}"

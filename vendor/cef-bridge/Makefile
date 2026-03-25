@@ -2,15 +2,17 @@
 #
 # In stub mode (no CEF_ROOT), compiles stubs returning CEF_BRIDGE_ERR_NOT_INIT.
 # When CEF_ROOT points to the CEF distribution, builds with real CEF calls.
+#
+# Note: the CEF C++ wrapper (libcef_dll_wrapper.a) is NOT merged into the
+# bridge library. It must be linked separately or resolved at runtime via
+# the Chromium Embedded Framework.framework.
 
 CXX ?= clang++
 AR  ?= ar
 ARCHS ?= arm64
 
 # CEF_ROOT: path to extracted CEF binary distribution
-# CEF_WRAPPER_LIB: path to built libcef_dll_wrapper.a
 CEF_ROOT ?=
-CEF_WRAPPER_LIB ?=
 
 CXXFLAGS := -std=c++20 -fPIC -Wall -Wextra -Wno-unused-parameter
 CXXFLAGS += $(foreach arch,$(ARCHS),-arch $(arch))
@@ -29,15 +31,8 @@ LIB := libcef_bridge.a
 
 all: $(LIB)
 
-ifdef CEF_WRAPPER_LIB
-# When we have the wrapper lib, merge both into one archive
-$(LIB): $(OBJ)
-	cp $(CEF_WRAPPER_LIB) $@
-	$(AR) rs $@ $^
-else
 $(LIB): $(OBJ)
 	$(AR) rcs $@ $^
-endif
 
 %.o: %.cpp cef_bridge.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@

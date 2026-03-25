@@ -1,3 +1,4 @@
 *.o
 *.a
 Chromium Embedded Framework.framework
+cmux_helper

@@ -10,7 +10,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CEF_BRIDGE_DIR="$PROJECT_DIR/vendor/cef-bridge"
 
 # CEF version pinned for this release
-CEF_VERSION="138.0.60+gd8bc8bd+chromium-138.0.7204.307"
+CEF_VERSION="146.0.6+g68649e2+chromium-146.0.7680.154"
 CEF_PLATFORM="macosarm64"
 CEF_DIST_NAME="cef_binary_${CEF_VERSION}_${CEF_PLATFORM}_minimal"
 CEF_CACHE_DIR="${CMUX_CEF_CACHE_DIR:-$HOME/.cache/cmux/cef}"
@@ -78,11 +78,14 @@ build_bridge() {
         echo "==> Building CEF bridge with real CEF support..."
         make -C "$CEF_BRIDGE_DIR" clean all \
             ARCHS="$target_archs" \
-            CEF_ROOT="$CEF_EXTRACT_DIR" \
-            CEF_WRAPPER_LIB="$wrapper_lib"
+            CEF_ROOT="$CEF_EXTRACT_DIR"
+        # Copy the wrapper library alongside the bridge for separate linking
+        cp "$wrapper_lib" "$CEF_BRIDGE_DIR/libcef_dll_wrapper.a"
     else
         echo "==> Building CEF bridge (stub mode, no CEF framework)..."
         make -C "$CEF_BRIDGE_DIR" clean all ARCHS="$target_archs"
+        # Remove stale wrapper if present
+        rm -f "$CEF_BRIDGE_DIR/libcef_dll_wrapper.a"
     fi
     # Always use the stub framework for Xcode linking. The real CEF framework
     # has a flat bundle structure that Xcode's validator rejects. The real
@@ -120,7 +123,7 @@ build_stub_framework() {
     printf 'void cmux_cef_framework_stub(void) {}\n' | \
         clang -dynamiclib "${arch_flags[@]}" -mmacosx-version-min=13.0 \
             -install_name "@rpath/Chromium Embedded Framework.framework/Chromium Embedded Framework" \
-            -compatibility_version 1380.0.60 -current_version 1380.0.60 \
+            -compatibility_version 1460.0.6 -current_version 1460.0.6 \
             -x c - -o "$framework_bin"
     ln -sfn "A" "$framework_current_dir"
     ln -sfn "Versions/Current/Chromium Embedded Framework" "$framework_dir/Chromium Embedded Framework"
@@ -163,6 +166,7 @@ case "${1:-full}" in
     stub)
         echo "==> Building CEF bridge (stub mode)..."
         make -C "$CEF_BRIDGE_DIR" clean all
+        build_stub_framework "${ARCHS:-arm64}"
         ;;
     full)
         download_cef
