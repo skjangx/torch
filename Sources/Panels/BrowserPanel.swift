@@ -2669,11 +2669,6 @@ final class BrowserPanel: Panel, ObservableObject {
                 self.clearCloudflareVerificationFallback()
             }
         }
-        navDelegate.didObserveMainFrameRequestURL = { [weak self] url in
-            Task { @MainActor in
-                self?.noteMainFrameRequestURL(url)
-            }
-        }
     }
 
     private func isCurrentWebView(_ candidate: WKWebView, instanceID: UUID? = nil) -> Bool {
@@ -2729,6 +2724,11 @@ final class BrowserPanel: Panel, ObservableObject {
         }
         navDelegate.didTerminateWebContentProcess = { [weak self] webView in
             self?.replaceWebViewAfterContentProcessTermination(for: webView)
+        }
+        navDelegate.didObserveMainFrameRequestURL = { [weak self] url in
+            Task { @MainActor in
+                self?.noteMainFrameRequestURL(url)
+            }
         }
         // Set up download delegate for navigation-based downloads.
         // Downloads save to a temp file synchronously (no NSSavePanel during WebKit
