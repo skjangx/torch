@@ -56,12 +56,12 @@ func isCommandPaletteFocusStealingTerminalOrBrowserResponder(_ responder: NSResp
 }
 
 func isCommandPaletteFocusStealingTerminalOrBrowserView(_ view: NSView) -> Bool {
-    if view is GhosttyNSView || view is WKWebView {
+    if view is GhosttyNSView || view is GhosttySurfaceScrollView || view is WKWebView {
         return true
     }
     var current: NSView? = view.superview
     while let candidate = current {
-        if candidate is GhosttyNSView || candidate is WKWebView {
+        if candidate is GhosttyNSView || candidate is GhosttySurfaceScrollView || candidate is WKWebView {
             return true
         }
         current = candidate.superview
