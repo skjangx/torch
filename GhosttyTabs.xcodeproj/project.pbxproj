@@ -374,6 +374,28 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		CEF00017 /* Build CEF Bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/build-cef-bridge.sh",
+				"$(SRCROOT)/vendor/cef-bridge/Makefile",
+				"$(SRCROOT)/vendor/cef-bridge/cef_bridge.cpp",
+				"$(SRCROOT)/vendor/cef-bridge/cef_bridge.h",
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/vendor/cef-bridge/libcef_bridge.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nCEF_BRIDGE_SCRIPT=\"${SRCROOT}/scripts/build-cef-bridge.sh\"\nif [ ! -f \"$CEF_BRIDGE_SCRIPT\" ]; then\n  echo \"error: missing CEF bridge build script at $CEF_BRIDGE_SCRIPT\" >&2\n  exit 1\nfi\n/bin/bash \"$CEF_BRIDGE_SCRIPT\" bridge\n";
+		};
 		A5001300A1B2C3D4E5F60719 /* Copy Ghostty Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -576,6 +598,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A5001060 /* Build configuration list for PBXNativeTarget "GhosttyTabs" */;
 			buildPhases = (
+				CEF00017 /* Build CEF Bridge */,
 				A5001051 /* Sources */,
 				A5001030 /* Frameworks */,
 				A5001102 /* Resources */,

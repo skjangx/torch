@@ -5,6 +5,7 @@
 
 CXX ?= clang++
 AR  ?= ar
+ARCHS ?= arm64
 
 # CEF_ROOT: path to extracted CEF binary distribution
 # CEF_WRAPPER_LIB: path to built libcef_dll_wrapper.a
@@ -12,7 +13,7 @@ CEF_ROOT ?=
 CEF_WRAPPER_LIB ?=
 
 CXXFLAGS := -std=c++20 -fPIC -Wall -Wextra -Wno-unused-parameter
-CXXFLAGS += -arch arm64
+CXXFLAGS += $(foreach arch,$(ARCHS),-arch $(arch))
 CXXFLAGS += -mmacosx-version-min=13.0
 CXXFLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics
 

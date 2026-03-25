@@ -56,15 +56,33 @@ build_wrapper() {
 }
 
 build_bridge() {
-    if [ -d "$CEF_EXTRACT_DIR" ]; then
-        local wrapper_lib="$CEF_EXTRACT_DIR/build/libcef_dll_wrapper/libcef_dll_wrapper.a"
+    local target_archs="${ARCHS:-arm64}"
+    local wrapper_lib="$CEF_EXTRACT_DIR/build/libcef_dll_wrapper/libcef_dll_wrapper.a"
+    local needs_stub=0
+
+    case " $target_archs " in
+        *" x86_64 "*)
+            echo "==> x86_64 build requested, using stub bridge"
+            needs_stub=1
+            ;;
+    esac
+
+    if [ ! -d "$CEF_EXTRACT_DIR" ]; then
+        needs_stub=1
+    elif [ ! -f "$wrapper_lib" ]; then
+        echo "==> CEF extract found but wrapper library is missing, using stub bridge"
+        needs_stub=1
+    fi
+
+    if [ "$needs_stub" -eq 0 ]; then
         echo "==> Building CEF bridge with real CEF support..."
         make -C "$CEF_BRIDGE_DIR" clean all \
+            ARCHS="$target_archs" \
             CEF_ROOT="$CEF_EXTRACT_DIR" \
             CEF_WRAPPER_LIB="$wrapper_lib"
     else
         echo "==> Building CEF bridge (stub mode, no CEF framework)..."
-        make -C "$CEF_BRIDGE_DIR" clean all
+        make -C "$CEF_BRIDGE_DIR" clean all ARCHS="$target_archs"
     fi
 }
 
