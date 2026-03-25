@@ -208,7 +208,24 @@ _cmux_ensure_ghostty_preexec_strips_both_marks() {
     fi
 }
 
+_cmux_ghostty_hook_uses_prompt_start_markers() {
+    local fn_name="$1"
+    (( $+functions[$fn_name] )) || return 1
+
+    local body="${functions[$fn_name]}"
+    [[ "$body" == *'133;P;k=i'* || "$body" == *'133;P;k=s'* ]]
+}
+
 _cmux_patch_ghostty_semantic_redraw() {
+    # Modern Ghostty zsh integration already emits OSC 133;P markers for redraws.
+    # Forcing redraw=last on its fresh prompt marker regresses resize/reflow clears by
+    # only erasing the cursor line, which leaves stale bottom prompt rows behind.
+    if _cmux_ghostty_hook_uses_prompt_start_markers _ghostty_deferred_init ||
+       _cmux_ghostty_hook_uses_prompt_start_markers _ghostty_precmd ||
+       _cmux_ghostty_hook_uses_prompt_start_markers _ghostty_preexec; then
+        return 0
+    fi
+
     local old_frag new_frag
     old_frag='133;A;cl=line'
     new_frag='133;A;redraw=last;cl=line'
