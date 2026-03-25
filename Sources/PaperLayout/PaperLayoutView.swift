@@ -37,12 +37,6 @@ struct PaperLayoutView<Content: View, EmptyContent: View>: View {
                 }
             }
             .offset(x: -controller.viewportOffset)
-            .animation(
-                controller.configuration.appearance.enableAnimations
-                    ? .easeInOut(duration: controller.configuration.appearance.animationDuration)
-                    : nil,
-                value: controller.viewportOffset
-            )
             .clipped()
             .onAppear {
                 controller.viewportWidth = viewportWidth
