@@ -404,6 +404,34 @@ final class CommandPaletteOpenShortcutConsumptionTests: XCTestCase {
 }
 
 
+final class CommandPaletteFocusStealerClassificationTests: XCTestCase {
+    func testTreatsGhosttySurfaceViewAsFocusStealer() {
+        let surfaceView = GhosttyNSView(frame: NSRect(x: 0, y: 0, width: 120, height: 80))
+
+        XCTAssertTrue(isCommandPaletteFocusStealingTerminalOrBrowserResponder(surfaceView))
+    }
+
+    func testTreatsTextFieldInsideTerminalHostedViewAsFocusStealer() {
+        let hostedView = GhosttySurfaceScrollView(
+            surfaceView: GhosttyNSView(frame: NSRect(x: 0, y: 0, width: 120, height: 80))
+        )
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        hostedView.addSubview(textField)
+
+        XCTAssertTrue(
+            isCommandPaletteFocusStealingTerminalOrBrowserResponder(textField),
+            "Terminal-owned overlay text inputs should not be allowed to reclaim focus from the command palette"
+        )
+    }
+
+    func testDoesNotTreatUnrelatedTextFieldAsFocusStealer() {
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+
+        XCTAssertFalse(isCommandPaletteFocusStealingTerminalOrBrowserResponder(textField))
+    }
+}
+
+
 final class CommandPaletteRestoreFocusStateMachineTests: XCTestCase {
     func testRestoresBrowserAddressBarWhenPaletteOpenedFromFocusedAddressBar() {
         let panelId = UUID()

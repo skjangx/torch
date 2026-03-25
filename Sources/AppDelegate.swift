@@ -37,6 +37,38 @@ private enum CmuxThemeNotifications {
     static let reloadConfig = Notification.Name("com.cmuxterm.themes.reload-config")
 }
 
+func isCommandPaletteFocusStealingTerminalOrBrowserResponder(_ responder: NSResponder) -> Bool {
+    if responder is GhosttyNSView || responder is WKWebView {
+        return true
+    }
+
+    if let textView = responder as? NSTextView,
+       !textView.isFieldEditor,
+       let delegateView = textView.delegate as? NSView {
+        return isCommandPaletteFocusStealingTerminalOrBrowserView(delegateView)
+    }
+
+    if let view = responder as? NSView {
+        return isCommandPaletteFocusStealingTerminalOrBrowserView(view)
+    }
+
+    return false
+}
+
+func isCommandPaletteFocusStealingTerminalOrBrowserView(_ view: NSView) -> Bool {
+    if view is GhosttyNSView || view is WKWebView {
+        return true
+    }
+    var current: NSView? = view.superview
+    while let candidate = current {
+        if candidate is GhosttyNSView || candidate is WKWebView {
+            return true
+        }
+        current = candidate.superview
+    }
+    return false
+}
+
 #if DEBUG
 enum CmuxTypingTiming {
     static let isEnabled: Bool = {
@@ -4592,35 +4624,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func isFocusStealingResponderWhileCommandPaletteVisible(_ responder: NSResponder) -> Bool {
-        if responder is GhosttyNSView || responder is WKWebView {
-            return true
-        }
-
-        if let textView = responder as? NSTextView,
-           !textView.isFieldEditor,
-           let delegateView = textView.delegate as? NSView {
-            return isTerminalOrBrowserView(delegateView)
-        }
-
-        if let view = responder as? NSView {
-            return isTerminalOrBrowserView(view)
-        }
-
-        return false
+        isCommandPaletteFocusStealingTerminalOrBrowserResponder(responder)
     }
 
     private func isTerminalOrBrowserView(_ view: NSView) -> Bool {
-        if view is GhosttyNSView || view is WKWebView {
-            return true
-        }
-        var current: NSView? = view.superview
-        while let candidate = current {
-            if candidate is GhosttyNSView || candidate is WKWebView {
-                return true
-            }
-            current = candidate.superview
-        }
-        return false
+        isCommandPaletteFocusStealingTerminalOrBrowserView(view)
     }
 
     private func isInsideCommandPaletteOverlay(_ view: NSView) -> Bool {
