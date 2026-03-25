@@ -58,16 +58,8 @@ record_system_info() {
   } > "${SYSTEM_INFO_LOG}"
 }
 
-copy_recent_crash_reports() {
-  local dest="${CRASH_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "${dest}"
-  local found=0
-  while IFS= read -r report_path; do
-    [[ -z "${report_path}" ]] && continue
-    cp "${report_path}" "${dest}/" 2>/dev/null || true
-    found=1
-  done < <(
-    python3 - <<'PY' "${BEFORE_CRASH_LIST}"
+new_crash_report_paths() {
+  python3 - <<'PY' "${BEFORE_CRASH_LIST}"
 from pathlib import Path
 import sys
 
@@ -87,7 +79,31 @@ if diag.exists():
         if str(path) not in before:
             print(path)
 PY
-  )
+}
+
+copy_recent_crash_reports() {
+  local dest="${CRASH_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "${dest}"
+  local found=0
+  local report_paths=""
+
+  if [[ -n "${APP_PID}" ]] && ! kill -0 "${APP_PID}" 2>/dev/null; then
+    for _ in $(seq 1 10); do
+      report_paths="$(new_crash_report_paths)"
+      if [[ -n "${report_paths}" ]]; then
+        break
+      fi
+      sleep 1
+    done
+  else
+    report_paths="$(new_crash_report_paths)"
+  fi
+
+  while IFS= read -r report_path; do
+    [[ -z "${report_path}" ]] && continue
+    cp "${report_path}" "${dest}/" 2>/dev/null || true
+    found=1
+  done <<< "${report_paths}"
   if [[ "${found}" -eq 0 ]]; then
     echo "(none)" > "${dest}/none.txt"
   fi
