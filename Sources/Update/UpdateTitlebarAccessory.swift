@@ -1202,6 +1202,7 @@ final class UpdateTitlebarAccessoryController {
     private var startupScanWorkItems: [DispatchWorkItem] = []
     private let controlsIdentifier = NSUserInterfaceItemIdentifier("cmux.titlebarControls")
     private let controlsControllers = NSHashTable<TitlebarControlsAccessoryViewController>.weakObjects()
+    private var lastKnownPresentationMode: WorkspacePresentationModeSettings.Mode = WorkspacePresentationModeSettings.mode()
 
     init(viewModel: UpdateViewModel) {
         self.updateViewModel = viewModel
@@ -1249,8 +1250,40 @@ final class UpdateTitlebarAccessoryController {
             }
         })
 
+        // Re-evaluate all windows when the presentation mode changes so that
+        // accessories are removed in minimal mode and re-attached in standard mode.
+        observers.append(center.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reattachIfPresentationModeChanged()
+            }
+        })
+
         // We intentionally do not rely on "window became visible" notifications here:
         // AppKit does not provide a stable cross-SDK API for this. Startup scans handle this case.
+    }
+
+    private func reattachIfPresentationModeChanged() {
+        let currentMode = WorkspacePresentationModeSettings.mode()
+        guard currentMode != lastKnownPresentationMode else { return }
+        lastKnownPresentationMode = currentMode
+        attachToExistingWindows()
+
+        // When switching back to standard mode while a window is in fullscreen,
+        // hide the newly attached accessories because fullscreen uses SwiftUI
+        // overlay controls instead of the titlebar accessories.
+        if currentMode == .standard {
+            for window in NSApp.windows where window.styleMask.contains(.fullScreen) {
+                for accessory in window.titlebarAccessoryViewControllers
+                    where accessory.view.identifier == controlsIdentifier {
+                    accessory.isHidden = true
+                    accessory.view.alphaValue = 0
+                }
+            }
+        }
     }
 
     private func attachToExistingWindows() {
