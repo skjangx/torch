@@ -7,6 +7,12 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		CEF00001 /* BrowserEngineType.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00011 /* BrowserEngineType.swift */; };
+		CEF00002 /* CEFFrameworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00012 /* CEFFrameworkManager.swift */; };
+		CEF00003 /* CEFRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00013 /* CEFRuntime.swift */; };
+		CEF00004 /* CEFDownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00014 /* CEFDownloadView.swift */; };
+		CEF00005 /* CEFBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00015 /* CEFBrowserView.swift */; };
+		CEF00006 /* CEFBrowserViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF00016 /* CEFBrowserViewRepresentable.swift */; };
 			A5001001 /* cmuxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001011 /* cmuxApp.swift */; };
 			A5001002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001012 /* ContentView.swift */; };
 			E62155868BB29FEB5DAAAF25 /* SidebarSelectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD52285508B1D6A9875E7B3 /* SidebarSelectionState.swift */; };
@@ -180,6 +186,12 @@
 /* End PBXContainerItemProxy section */
 
 		/* Begin PBXFileReference section */
+		CEF00011 /* BrowserEngineType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/BrowserEngineType.swift; sourceTree = "<group>"; };
+		CEF00012 /* CEFFrameworkManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/CEFFrameworkManager.swift; sourceTree = "<group>"; };
+		CEF00013 /* CEFRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/CEFRuntime.swift; sourceTree = "<group>"; };
+		CEF00014 /* CEFDownloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/CEFDownloadView.swift; sourceTree = "<group>"; };
+		CEF00015 /* CEFBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/CEFBrowserView.swift; sourceTree = "<group>"; };
+		CEF00016 /* CEFBrowserViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserEngine/CEFBrowserViewRepresentable.swift; sourceTree = "<group>"; };
 			A5001000 /* cmux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 			F1000002A1B2C3D4E5F60718 /* cmuxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cmuxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 			7E7E6EF344A568AC7FEE3715 /* cmuxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cmuxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -370,6 +382,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		CEF00020 /* Build CEF Bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputFileListPaths = ();
+			inputPaths = (
+				"$(SRCROOT)/scripts/build-cef-bridge.sh",
+				"$(SRCROOT)/vendor/cef-bridge/Makefile",
+				"$(SRCROOT)/vendor/cef-bridge/cef_bridge.cpp",
+				"$(SRCROOT)/vendor/cef-bridge/cef_bridge.h",
+			);
+			outputFileListPaths = ();
+			outputPaths = (
+				"$(SRCROOT)/vendor/cef-bridge/libcef_bridge.a",
+				"$(SRCROOT)/vendor/cef-bridge/Chromium Embedded Framework.framework/Chromium Embedded Framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nCEF_BRIDGE_SCRIPT=\"${SRCROOT}/scripts/build-cef-bridge.sh\"\nif [ ! -f \"$CEF_BRIDGE_SCRIPT\" ]; then\n  echo \"error: missing CEF bridge build script at $CEF_BRIDGE_SCRIPT\" >&2\n  exit 1\nfi\n/bin/bash \"$CEF_BRIDGE_SCRIPT\" stub\n";
+		};
 		A5001300A1B2C3D4E5F60719 /* Copy Ghostty Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -469,6 +501,12 @@
 				A5001651 /* CmuxConfig.swift */,
 				A5001653 /* CmuxConfigExecutor.swift */,
 				A5001655 /* CmuxDirectoryTrust.swift */,
+				CEF00011 /* BrowserEngineType.swift */,
+				CEF00012 /* CEFFrameworkManager.swift */,
+				CEF00013 /* CEFRuntime.swift */,
+				CEF00014 /* CEFDownloadView.swift */,
+				CEF00015 /* CEFBrowserView.swift */,
+				CEF00016 /* CEFBrowserViewRepresentable.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -570,6 +608,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A5001060 /* Build configuration list for PBXNativeTarget "GhosttyTabs" */;
 			buildPhases = (
+				CEF00020 /* Build CEF Bridge */,
 				A5001051 /* Sources */,
 				A5001030 /* Frameworks */,
 				A5001102 /* Resources */,
@@ -768,6 +807,12 @@
 				A5001650 /* CmuxConfig.swift in Sources */,
 				A5001652 /* CmuxConfigExecutor.swift in Sources */,
 				A5001654 /* CmuxDirectoryTrust.swift in Sources */,
+				CEF00001 /* BrowserEngineType.swift in Sources */,
+				CEF00002 /* CEFFrameworkManager.swift in Sources */,
+				CEF00003 /* CEFRuntime.swift in Sources */,
+				CEF00004 /* CEFDownloadView.swift in Sources */,
+				CEF00005 /* CEFBrowserView.swift in Sources */,
+				CEF00006 /* CEFBrowserViewRepresentable.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -933,13 +978,22 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vendor/cef-bridge",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vendor/cef-bridge",
+				);
 				MARKETING_VERSION = 0.62.2;
 				OTHER_LDFLAGS = (
 					"-lc++",
+					"-lcef_bridge",
 					"-framework",
 					Metal,
 					"-framework",
@@ -972,13 +1026,22 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vendor/cef-bridge",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vendor/cef-bridge",
+				);
 				MARKETING_VERSION = 0.62.2;
 				OTHER_LDFLAGS = (
 					"-lc++",
+					"-lcef_bridge",
 					"-framework",
 					Metal,
 					"-framework",

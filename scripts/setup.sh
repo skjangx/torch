@@ -81,6 +81,12 @@ fi
 echo "==> Creating symlink for GhosttyKit.xcframework..."
 ln -sfn "$CACHE_XCFRAMEWORK" GhosttyKit.xcframework
 
+echo "==> Building CEF bridge library..."
+CEF_BRIDGE_DIR="$PROJECT_DIR/vendor/cef-bridge"
+if [ -f "$CEF_BRIDGE_DIR/Makefile" ]; then
+    /bin/bash "$PROJECT_DIR/scripts/build-cef-bridge.sh" stub
+fi
+
 echo "==> Setup complete!"
 echo ""
 echo "You can now build and run the app:"

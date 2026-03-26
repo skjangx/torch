@@ -85,6 +85,14 @@ if ! command -v zig >/dev/null 2>&1; then
   exit 1
 fi
 
+# Workaround: Xcode 26.4 SDK dropped arm64-macos from TBD targets.
+# Zig 0.15.x can't match arm64e. Use Xcode 26.3's SDK if available.
+# See codeberg.org/ziglang/zig/issues/31658
+CURRENT_SDK_VERSION="$(xcrun --show-sdk-version 2>/dev/null || true)"
+if [[ "$CURRENT_SDK_VERSION" == "26.4" ]] && [[ -d "/Applications/Xcode_26.3.app" ]]; then
+    export DEVELOPER_DIR="/Applications/Xcode_26.3.app/Contents/Developer"
+fi
+
 if [[ ! -f "$GHOSTTY_DIR/build.zig" ]]; then
   echo "error: Ghostty submodule is missing at $GHOSTTY_DIR" >&2
   exit 1

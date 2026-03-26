@@ -2212,9 +2212,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var lastTypingActivityAt: TimeInterval = 0
     private var didHandleExplicitOpenIntentAtStartup = false
     private var isTerminatingApp = false
-    // Set to true when the user has already confirmed quit via the warning dialog,
-    // so applicationShouldTerminate does not show a second alert.
-    private var isQuitWarningConfirmed = false
     private var didInstallLifecycleSnapshotObservers = false
     private var didDisableSuddenTermination = false
     private var commandPaletteVisibilityByWindowId: [UUID: Bool] = [:]
@@ -2704,46 +2701,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         isTerminatingApp = true
         _ = saveSessionSnapshot(includeScrollback: true, removeWhenEmpty: false)
-
-        // If the user already confirmed via the Cmd+Q shortcut warning dialog
-        // (handleQuitShortcutWarning), skip the check to avoid a second alert.
-        if isQuitWarningConfirmed {
-            return .terminateNow
-        }
-
-        // Respect the "Warn Before Quit" setting even when Cmd+Q arrives via
-        // the Cmd+Tab app switcher, bypassing handleCustomShortcut.
-        guard QuitWarningSettings.isEnabled() else {
-            return .terminateNow
-        }
-
-        // Show the same confirmation dialog used by the Cmd+Q shortcut path,
-        // then reply asynchronously so we can return .terminateLater now.
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = String(localized: "dialog.quitCmux.title", defaultValue: "Quit cmux?")
-            alert.informativeText = String(localized: "dialog.quitCmux.message", defaultValue: "This will close all windows and workspaces.")
-            alert.addButton(withTitle: String(localized: "dialog.quitCmux.quit", defaultValue: "Quit"))
-            alert.addButton(withTitle: String(localized: "common.cancel", defaultValue: "Cancel"))
-            alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = String(localized: "dialog.dontWarnCmdQ", defaultValue: "Don't warn again for Cmd+Q")
-
-            let response = alert.runModal()
-            if alert.suppressionButton?.state == .on {
-                QuitWarningSettings.setEnabled(false)
-            }
-
-            let shouldQuit = response == .alertFirstButtonReturn
-            if shouldQuit {
-                self.isQuitWarningConfirmed = true
-            } else {
-                // Reset so that the next quit attempt can show the dialog again.
-                self.isTerminatingApp = false
-            }
-            NSApp.reply(toApplicationShouldTerminate: shouldQuit)
-        }
-        return .terminateLater
+        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -2778,6 +2736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         installLifecycleSnapshotObserversIfNeeded()
         prepareStartupSessionSnapshotIfNeeded()
         startSessionAutosaveTimerIfNeeded()
+        autoOpenChromiumIfRequested()
 #if DEBUG
         setupJumpUnreadUITestIfNeeded()
         setupGotoSplitUITestIfNeeded()
@@ -9025,9 +8984,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         if response == .alertFirstButtonReturn {
-            // Mark as confirmed so applicationShouldTerminate does not show a
-            // second alert when NSApp.terminate re-enters the delegate callback.
-            isQuitWarningConfirmed = true
             NSApp.terminate(nil)
         }
         return true
@@ -10090,6 +10046,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return panelId
     }
 
+    /// Check for CMUX_AUTO_CHROMIUM_URL env var and auto-open a Chromium tab.
+    /// Used for headless/SSH testing.
+    func autoOpenChromiumIfRequested() {
+        let urlStr = ProcessInfo.processInfo.environment["CMUX_AUTO_CHROMIUM_URL"]
+#if DEBUG
+        dlog("cef.autoOpen urlStr=\(urlStr ?? "nil")")
+#endif
+        guard let urlStr, let url = URL(string: urlStr) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+#if DEBUG
+            dlog("cef.autoOpen.fire tabManager=\(self?.tabManager != nil)")
+#endif
+            _ = self?.openChromiumBrowserAndFocusAddressBar(url: url)
+        }
+    }
+
+    @discardableResult
+    func openChromiumBrowserAndFocusAddressBar(url: URL? = nil) -> UUID? {
+        let store = BrowserProfileStore.shared
+        let chromiumProfile: BrowserProfileDefinition
+        if let existing = store.profiles.first(where: { $0.engineType == .chromium }) {
+            chromiumProfile = existing
+        } else {
+            guard let created = store.createProfile(named: "Chromium", engineType: .chromium) else { return nil }
+            chromiumProfile = created
+        }
+        guard let panelId = tabManager?.openBrowser(
+            url: url, preferredProfileID: chromiumProfile.id, insertAtEnd: true
+        ) else { return nil }
+        _ = focusBrowserAddressBar(panelId: panelId)
+        return panelId
+    }
+
     private func focusBrowserAddressBar(in panel: BrowserPanel) {
 #if DEBUG
         let requestId = panel.requestAddressBarFocus()
@@ -10674,7 +10663,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // For command-based shortcuts, trust AppKit's layout-aware characters when present.
         // Keep this strict for letter shortcuts to avoid physical-key collisions across layouts,
         // while still allowing keyCode fallback for digit/punctuation shortcuts on non-US layouts.
-        // When a non-Latin input source is active (Russian, Korean, Chinese, Japanese, etc.),
+        // When a non-Latin input source is active (Korean, Chinese, Japanese, etc.),
         // charactersIgnoringModifiers returns non-ASCII characters that can never match
         // a Latin shortcut key — skip this guard and fall through to layout-based matching.
         let hasEventChars = !(eventCharsIgnoringModifiers?.isEmpty ?? true)
@@ -10703,20 +10692,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // so keep ANSI keyCode fallback for control-modified shortcuts. Also allow fallback for
         // command punctuation shortcuts, since some non-US layouts report different characters
         // for the same physical key even when menu-equivalent semantics should still apply.
-        // When a non-Latin input source is active (Russian, Korean, Chinese, Japanese, etc.),
-        // event chars carry no usable Latin key identity. Always allow keyCode fallback as a
-        // safety net — even when the layout-based translation resolved a character, the
-        // physical key code is the definitive identifier for the intended shortcut.
-        // For empty-character events (synthetic/browser key equivalents), preserve the original
-        // behavior: only fall back when the layout translation also failed.
+        // When a non-Latin input source is active, treat non-ASCII event chars the same as
+        // absent chars — they carry no usable Latin key identity.
         let hasUsableEventChars = hasEventChars && eventCharsAreASCII
         let allowANSIKeyCodeFallback = flags.contains(.control)
             || (flags.contains(.command)
                 && !flags.contains(.control)
                 && (
                     !shouldRequireCharacterMatchForCommandShortcut(shortcutKey: shortcutKey)
-                        || (hasEventChars && !eventCharsAreASCII)
-                        || (!hasEventChars && (layoutCharacter?.isEmpty ?? true))
+                        || (!hasUsableEventChars && (layoutCharacter?.isEmpty ?? true))
                 ))
         if allowANSIKeyCodeFallback, let expectedKeyCode = keyCodeForShortcutKey(shortcutKey) {
             return event.keyCode == expectedKeyCode
