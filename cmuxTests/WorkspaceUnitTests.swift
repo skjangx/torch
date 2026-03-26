@@ -448,6 +448,35 @@ final class WorkspaceCreationPlacementTests: XCTestCase {
         XCTAssertEqual(manager.selectedTabId, inserted.id)
     }
 
+    func testAddWorkspaceSurvivesMidCreationClose() {
+        let manager = SnapshotMutatingTabManager()
+        guard let first = manager.tabs.first else {
+            XCTFail("Expected initial workspace")
+            return
+        }
+
+        let closingWorkspace = manager.addWorkspace()
+        let third = manager.addWorkspace()
+        manager.selectWorkspace(third)
+
+        let closingWorkspaceId = closingWorkspace.id
+        XCTAssertEqual(manager.tabs.map(\.id), [first.id, closingWorkspaceId, third.id])
+
+        manager.afterCaptureWorkspaceCreationSnapshot = {
+            guard let liveWorkspace = manager.tabs.first(where: { $0.id == closingWorkspaceId }) else {
+                XCTFail("Expected captured workspace to still be present when closing after snapshot")
+                return
+            }
+            manager.closeWorkspace(liveWorkspace)
+        }
+
+        let inserted = manager.addWorkspace(placementOverride: .afterCurrent)
+
+        XCTAssertFalse(manager.tabs.contains(where: { $0.id == closingWorkspaceId }))
+        XCTAssertEqual(manager.tabs.map(\.id), [first.id, third.id, inserted.id])
+        XCTAssertEqual(manager.selectedTabId, inserted.id)
+    }
+
     func testAddWorkspaceAfterCurrentUsesSnapshotPinnedStateWhenPinningMutatesAfterSnapshot() {
         let manager = SnapshotMutatingTabManager()
         guard let first = manager.tabs.first else {
@@ -508,6 +537,65 @@ final class WorkspaceCreationPlacementTests: XCTestCase {
             manager.selectWorkspace(first)
         }
         return manager
+    }
+}
+
+@MainActor
+final class WorkspaceCreationConfigSanitizationTests: XCTestCase {
+    private final class UnsafeConfigSnapshotTabManager: TabManager {
+        private var injectedConfig: CmuxSurfaceConfigTemplate?
+        var capturedConfigTemplate: CmuxSurfaceConfigTemplate?
+
+        func installInjectedConfig(fontSize: Float) {
+            var config = CmuxSurfaceConfigTemplate()
+            config.fontSize = fontSize
+            config.workingDirectory = "/tmp/cmux-workspace-snapshot"
+            config.command = "echo snapshot"
+            config.environmentVariables = ["CMUX_INHERITED_ENV": "1"]
+            injectedConfig = config
+        }
+
+        override func inheritedTerminalConfigForNewWorkspace(
+            workspace: Workspace?
+        ) -> CmuxSurfaceConfigTemplate? {
+            injectedConfig ?? super.inheritedTerminalConfigForNewWorkspace(workspace: workspace)
+        }
+
+        override func makeWorkspaceForCreation(
+            title: String,
+            workingDirectory: String?,
+            portOrdinal: Int,
+            configTemplate: CmuxSurfaceConfigTemplate?,
+            initialTerminalCommand: String?,
+            initialTerminalEnvironment: [String: String]
+        ) -> Workspace {
+            capturedConfigTemplate = configTemplate
+            return super.makeWorkspaceForCreation(
+                title: title,
+                workingDirectory: workingDirectory,
+                portOrdinal: portOrdinal,
+                configTemplate: configTemplate,
+                initialTerminalCommand: initialTerminalCommand,
+                initialTerminalEnvironment: initialTerminalEnvironment
+            )
+        }
+    }
+
+    func testAddWorkspacePassesSanitizedInheritedConfigTemplate() {
+        let manager = UnsafeConfigSnapshotTabManager()
+        manager.installInjectedConfig(fontSize: 19)
+
+        _ = manager.addWorkspace()
+
+        guard let capturedConfig = manager.capturedConfigTemplate else {
+            XCTFail("Expected captured config template for new workspace")
+            return
+        }
+
+        XCTAssertEqual(capturedConfig.fontSize, 19, accuracy: 0.001)
+        XCTAssertNil(capturedConfig.workingDirectory)
+        XCTAssertNil(capturedConfig.command)
+        XCTAssertTrue(capturedConfig.environmentVariables.isEmpty)
     }
 }
 

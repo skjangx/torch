@@ -816,7 +816,7 @@ class TabManager: ObservableObject {
         let selectedTabId: UUID?
         let selectedTabWasPinned: Bool
         let preferredWorkingDirectory: String?
-        let inheritedTerminalConfig: CmuxSurfaceConfigTemplate?
+        let inheritedTerminalFontPoints: Float?
     }
     private var agentPIDSweepTimer: DispatchSourceTimer?
     private var workspaceGitMetadataPollTimer: DispatchSourceTimer?
@@ -1199,6 +1199,7 @@ class TabManager: ObservableObject {
 
     @discardableResult
     func addWorkspace(
+        title: String? = nil,
         workingDirectory overrideWorkingDirectory: String? = nil,
         initialTerminalCommand: String? = nil,
         initialTerminalEnvironment: [String: String] = [:],
@@ -1207,9 +1208,24 @@ class TabManager: ObservableObject {
         placementOverride: NewWorkspacePlacement? = nil,
         autoWelcomeIfNeeded: Bool = true
     ) -> Workspace {
-        // Snapshot current published state once so workspace creation doesn't repeatedly
-        // bounce through Combine-backed accessors while we're preparing the new workspace.
-        let snapshot = workspaceCreationSnapshot()
+        // Extract Workspace-dependent data through `self` BEFORE capturing locals.
+        // Accessing through `self` is safe because the method retains `self` for its
+        // duration, keeping all Workspace objects reachable via `self.tabs`. Local copies
+        // of Workspace references (like a `selectedWorkspace` local) are vulnerable to
+        // Xcode 16.x's aggressive ARC optimizer eliding retains through inlined call
+        // chains (workspace → panel → surface → C pointer), causing use-after-free.
+        let preferredDir = preferredWorkingDirectoryForNewTab()
+        let inheritedFontPoints = inheritedTerminalFontPointsForNewWorkspace()
+
+        let capturedTabs = tabs
+        let capturedSelectedTabId = selectedTabId
+
+        let snapshot = workspaceCreationSnapshotLite(
+            currentTabs: capturedTabs,
+            currentSelectedTabId: capturedSelectedTabId,
+            preferredWorkingDirectory: preferredDir,
+            inheritedTerminalFontPoints: inheritedFontPoints
+        )
         didCaptureWorkspaceCreationSnapshot()
 #if DEBUG
         maybeMutateSelectionDuringWorkspaceCreationForDev(snapshot: snapshot)
@@ -1218,7 +1234,9 @@ class TabManager: ObservableObject {
         sentryBreadcrumb("workspace.create", data: ["tabCount": nextTabCount])
         let explicitWorkingDirectory = normalizedWorkingDirectory(overrideWorkingDirectory)
         let workingDirectory = explicitWorkingDirectory ?? snapshot.preferredWorkingDirectory
-        let inheritedConfig = snapshot.inheritedTerminalConfig
+        let inheritedConfig = workspaceCreationConfigTemplate(
+            inheritedTerminalFontPoints: snapshot.inheritedTerminalFontPoints
+        )
         // Resolve placement against the pre-creation snapshot before Workspace init
         // boots terminal state. The ssh/new-workspace path can otherwise crash while
         // reading @Published placement state from existing workspaces mid-creation.
@@ -1226,7 +1244,7 @@ class TabManager: ObservableObject {
         let ordinal = Self.nextPortOrdinal
         Self.nextPortOrdinal += 1
         let newWorkspace = makeWorkspaceForCreation(
-            title: "Terminal \(nextTabCount)",
+            title: title ?? "Terminal \(nextTabCount)",
             workingDirectory: workingDirectory,
             portOrdinal: ordinal,
             configTemplate: inheritedConfig,
@@ -1234,6 +1252,9 @@ class TabManager: ObservableObject {
             initialTerminalEnvironment: initialTerminalEnvironment
         )
         newWorkspace.owningTabManager = self
+        if title != nil {
+            newWorkspace.setCustomTitle(title)
+        }
         wireClosedBrowserTracking(for: newWorkspace)
         if eagerLoadTerminal && !select {
             requestBackgroundWorkspaceLoad(for: newWorkspace.id)
@@ -2175,23 +2196,36 @@ class TabManager: ObservableObject {
         terminalPanelForWorkspaceConfigInheritanceSource(workspace: selectedWorkspace)
     }
 
-    private func workspaceCreationSnapshot() -> WorkspaceCreationSnapshot {
-        let currentTabs = tabs
-        let currentSelectedTabId = selectedTabId
+    /// Build a snapshot using pre-extracted value-type data. The caller is responsible
+    /// for obtaining `preferredWorkingDirectory` and `inheritedTerminalFontPoints` through
+    /// `self` (where `self.tabs` keeps all Workspace objects alive) so that no local
+    /// Workspace references are needed here.
+    private func workspaceCreationSnapshotLite(
+        currentTabs: [Workspace],
+        currentSelectedTabId: UUID?,
+        preferredWorkingDirectory: String?,
+        inheritedTerminalFontPoints: Float?
+    ) -> WorkspaceCreationSnapshot {
         let tabSnapshots = currentTabs.map { WorkspaceCreationTabSnapshot(workspace: $0) }
         let selectedTabSnapshot = currentSelectedTabId.flatMap { selectedTabId in
             tabSnapshots.first(where: { $0.id == selectedTabId })
-        }
-        let selectedWorkspace = currentSelectedTabId.flatMap { selectedTabId in
-            currentTabs.first(where: { $0.id == selectedTabId })
         }
 
         return WorkspaceCreationSnapshot(
             tabs: tabSnapshots,
             selectedTabId: currentSelectedTabId,
             selectedTabWasPinned: selectedTabSnapshot?.isPinned ?? false,
-            preferredWorkingDirectory: preferredWorkingDirectoryForNewTab(workspace: selectedWorkspace),
-            inheritedTerminalConfig: inheritedTerminalConfigForNewWorkspace(workspace: selectedWorkspace)
+            preferredWorkingDirectory: preferredWorkingDirectory,
+            inheritedTerminalFontPoints: inheritedTerminalFontPoints
+        )
+    }
+
+    private func workspaceCreationSnapshot() -> WorkspaceCreationSnapshot {
+        workspaceCreationSnapshotLite(
+            currentTabs: tabs,
+            currentSelectedTabId: selectedTabId,
+            preferredWorkingDirectory: preferredWorkingDirectoryForNewTab(),
+            inheritedTerminalFontPoints: inheritedTerminalFontPointsForNewWorkspace()
         )
     }
 
@@ -2251,7 +2285,7 @@ class TabManager: ObservableObject {
         inheritedTerminalConfigForNewWorkspace(workspace: selectedWorkspace)
     }
 
-    private func inheritedTerminalConfigForNewWorkspace(
+    func inheritedTerminalConfigForNewWorkspace(
         workspace: Workspace?
     ) -> CmuxSurfaceConfigTemplate? {
         if let panel = terminalPanelForWorkspaceConfigInheritanceSource(workspace: workspace),
@@ -2269,6 +2303,33 @@ class TabManager: ObservableObject {
             return config
         }
         return nil
+    }
+
+    private func inheritedTerminalFontPointsForNewWorkspace() -> Float? {
+        inheritedTerminalFontPointsForNewWorkspace(workspace: selectedWorkspace)
+    }
+
+    private func inheritedTerminalFontPointsForNewWorkspace(
+        workspace: Workspace?
+    ) -> Float? {
+        guard let inheritedConfig = inheritedTerminalConfigForNewWorkspace(workspace: workspace),
+              inheritedConfig.fontSize > 0 else {
+            return nil
+        }
+        return inheritedConfig.fontSize
+    }
+
+    private func workspaceCreationConfigTemplate(
+        inheritedTerminalFontPoints: Float?
+    ) -> CmuxSurfaceConfigTemplate? {
+        guard let inheritedTerminalFontPoints, inheritedTerminalFontPoints > 0 else {
+            return nil
+        }
+        // Rebuild a clean Swift-owned template instead of carrying over any pointer-backed
+        // inherited config state from the source workspace.
+        var config = CmuxSurfaceConfigTemplate()
+        config.fontSize = inheritedTerminalFontPoints
+        return config
     }
 
     private func normalizedWorkingDirectory(_ directory: String?) -> String? {
