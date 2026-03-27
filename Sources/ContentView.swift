@@ -2642,24 +2642,31 @@ struct ContentView: View {
 
         // In minimal mode, intercept double-clicks in the tab bar area and perform
         // the standard titlebar action (zoom/minimize) instead of letting Bonsplit
-        // create a new tab. The monitor is installed once per window and checks the
-        // current mode on each event so it adapts to mode toggles.
+        // create a new tab. Install with a delay so this monitor is added AFTER
+        // Bonsplit's EmptyTabBarDoubleClickMonitorView monitors — NSEvent local
+        // monitors are called in LIFO order, so the last-installed runs first.
         view = AnyView(view.background(
             WindowAccessor { window in
                 guard objc_getAssociatedObject(window, &_minimalModeDoubleClickMonitorKey) == nil else { return }
-                let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
-                    guard event.clickCount >= 2,
-                          WorkspacePresentationModeSettings.isMinimal(),
-                          let window = event.window else { return event }
-                    // Only intercept in the top strip (tab bar area)
-                    let contentHeight = window.contentLayoutRect.height
-                    let clickY = event.locationInWindow.y
-                    let distFromTop = contentHeight - clickY
-                    guard distFromTop <= 30 else { return event }
-                    performStandardTitlebarDoubleClick(window: window)
-                    return nil
+                // Mark immediately to avoid duplicate installations.
+                objc_setAssociatedObject(window, &_minimalModeDoubleClickMonitorKey, NSNull(), .OBJC_ASSOCIATION_RETAIN)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak window] in
+                    guard let window else { return }
+                    let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+                        guard event.clickCount >= 2,
+                              WorkspacePresentationModeSettings.isMinimal(),
+                              let eventWindow = event.window else { return event }
+                        // Only intercept in the top strip (tab bar area).
+                        // In AppKit window coords, y increases upward from bottom.
+                        let windowHeight = eventWindow.frame.height
+                        let clickY = event.locationInWindow.y
+                        let distFromTop = windowHeight - clickY
+                        guard distFromTop <= 30 else { return event }
+                        performStandardTitlebarDoubleClick(window: eventWindow)
+                        return nil
+                    }
+                    objc_setAssociatedObject(window, &_minimalModeDoubleClickMonitorKey, monitor, .OBJC_ASSOCIATION_RETAIN)
                 }
-                objc_setAssociatedObject(window, &_minimalModeDoubleClickMonitorKey, monitor, .OBJC_ASSOCIATION_RETAIN)
             }
             .frame(width: 0, height: 0)
         ))
