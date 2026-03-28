@@ -479,7 +479,8 @@ final class NiriCanvasView: NSView {
 
     private var dragLayer: CALayer?
     private var currentDropTarget: DropTarget?
-    private var lastAutoScrolledLive: Int = -1
+    private var autoScrolledLeft = false
+    private var autoScrolledRight = false
     var suppressHitTestFocus = false  // true during drag to prevent hitTest from stealing focus
 
     enum DropEdge: Equatable { case left, right, top, bottom }
@@ -528,7 +529,7 @@ final class NiriCanvasView: NSView {
 
         let mousePt = convert(event.locationInWindow, from: nil)
         dl.position = CGPoint(x: mousePt.x, y: mousePt.y)
-        lastAutoScrolledLive = -1
+        autoScrolledLeft = false; autoScrolledRight = false
         suppressHitTestFocus = true
 
         // Tracking loop: mouse events + keyboard (Escape to cancel)
@@ -549,16 +550,29 @@ final class NiriCanvasView: NSView {
             dl.position = CGPoint(x: pt.x, y: pt.y)
             CATransaction.commit()
 
-            // Auto-scroll: when hovering over a panel, scroll it fully into view.
-            // Find which panel the mouse is over and snap-scroll to reveal it.
-            let hoveredLive = liveIndexAtPoint(pt)
-            if let hl = hoveredLive, hl != lastAutoScrolledLive {
-                lastAutoScrolledLive = hl
-                let live = liveIndices
-                if hl < live.count {
-                    let panelStart = stripX(forLive: hl)
-                    let w = pw(for: panels[live[hl].panel])
-                    ensureVisible(panelStart: panelStart, panelWidth: w)
+            // Auto-scroll: only when cursor is beyond all visible panels.
+            // If you're over any panel, you have a drop target — no scroll needed.
+            let live = liveIndices
+            if !live.isEmpty {
+                let firstVisible = panels[live.first!.panel].containerView.frame
+                let lastVisible = panels[live.last!.panel].containerView.frame
+
+                if pt.x < firstVisible.minX && !autoScrolledLeft {
+                    // Past the left edge of all visible panels
+                    let prevIdx = max(0, focusedIndex - 1)
+                    if prevIdx < live.count {
+                        ensureVisible(panelStart: stripX(forLive: prevIdx), panelWidth: pw(for: panels[live[prevIdx].panel]))
+                    }
+                    autoScrolledLeft = true; autoScrolledRight = false
+                } else if pt.x > lastVisible.maxX && !autoScrolledRight {
+                    // Past the right edge of all visible panels
+                    let nextIdx = min(liveCount - 1, focusedIndex + 1)
+                    if nextIdx < live.count {
+                        ensureVisible(panelStart: stripX(forLive: nextIdx), panelWidth: pw(for: panels[live[nextIdx].panel]))
+                    }
+                    autoScrolledRight = true; autoScrolledLeft = false
+                } else if pt.x >= firstVisible.minX && pt.x <= lastVisible.maxX {
+                    autoScrolledLeft = false; autoScrolledRight = false
                 }
             }
 
