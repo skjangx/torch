@@ -13781,6 +13781,9 @@ private struct SidebarTrailingBorder: View {
                 .fill(Color(nsColor: separatorColor))
                 .frame(width: 1)
                 .ignoresSafeArea()
+                .onAppear {
+                    separatorColor = Self.chromeSeparatorColor()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .ghosttyDefaultBackgroundDidChange)) { _ in
                     separatorColor = Self.chromeSeparatorColor()
                 }
@@ -13807,9 +13810,8 @@ private struct SidebarTrailingBorder: View {
 }
 
 /// Sidebar background that uses the same technique as TitlebarLayerBackground:
-/// fully opaque layer color + layer-level opacity. Also clears non-transparent
-/// ancestor hosting view layers that SwiftUI may have added after the initial
-/// makeViewHierarchyTransparent pass, preventing them from tinting the fill.
+/// fully opaque layer color + layer-level opacity. This matches how the terminal's
+/// Metal surface composites its background.
 private struct SidebarTerminalBackgroundView: NSViewRepresentable {
     let backgroundColor: NSColor
     let opacity: CGFloat

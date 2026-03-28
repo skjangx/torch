@@ -2920,7 +2920,7 @@ private struct SidebarDebugView: View {
                 Text("Sidebar Appearance")
                     .font(.headline)
 
-                Toggle("Match Terminal Background", isOn: $matchTerminalBackground)
+                Toggle(String(localized: "settings.sidebarAppearance.matchTerminalBackground", defaultValue: "Match Terminal Background"), isOn: $matchTerminalBackground)
 
                 GroupBox("Presets") {
                     Picker("Preset", selection: $sidebarPreset) {
