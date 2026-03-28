@@ -764,6 +764,8 @@ final class NiriCanvasView: NSView {
             let targetPi = live[targetLive].panel
             guard sourceTab < panels[sourcePi].tabs.count else { break }
             let surface = panels[sourcePi].tabs[sourceTab]
+            // Capture source width before removal
+            let sourceWidth = panels[sourcePi].targetWidth
             // Remove from source
             panels[sourcePi].activeSurface?.hostedView.removeFromSuperview()
             panels[sourcePi].tabs.remove(at: sourceTab)
@@ -779,35 +781,24 @@ final class NiriCanvasView: NSView {
                 }
             }
 
-            // Recompute targetPi after potential removal
+            // New column inherits the SOURCE panel's width (not half the target)
             let newLive2 = liveIndices
+            var newCol = makePanel(with: [surface])
+            newCol.targetWidth = sourceWidth
+            newCol.currentWidth = sourceWidth
+            newCol.presetIndex = -1
+
             switch edge {
             case .left:
                 let insertPi = newLive2.first(where: { $0.live == targetLive })?.panel ?? targetPi
-                var newCol = makePanel(with: [surface])
-                newCol.targetWidth = panels[min(insertPi, panels.count - 1)].targetWidth / 2
-                newCol.currentWidth = newCol.targetWidth
-                newCol.presetIndex = -1
-                if insertPi < panels.count { panels[insertPi].targetWidth /= 2; panels[insertPi].currentWidth = panels[insertPi].targetWidth; panels[insertPi].presetIndex = -1 }
                 panels.insert(newCol, at: insertPi)
                 addSubview(newCol.containerView)
             case .right:
                 let insertPi = (newLive2.first(where: { $0.live == targetLive })?.panel ?? targetPi) + 1
-                let refPi = min(insertPi - 1, panels.count - 1)
-                var newCol = makePanel(with: [surface])
-                newCol.targetWidth = panels[refPi].targetWidth / 2
-                newCol.currentWidth = newCol.targetWidth
-                newCol.presetIndex = -1
-                panels[refPi].targetWidth /= 2; panels[refPi].currentWidth = panels[refPi].targetWidth; panels[refPi].presetIndex = -1
-                panels.insert(newCol, at: insertPi)
+                panels.insert(newCol, at: min(insertPi, panels.count))
                 addSubview(newCol.containerView)
             case .top, .bottom:
-                // For now, top/bottom creates a new column to the right (same as right edge)
                 let insertPi = (newLive2.first(where: { $0.live == targetLive })?.panel ?? targetPi) + 1
-                var newCol = makePanel(with: [surface])
-                newCol.targetWidth = panels[min(insertPi - 1, panels.count - 1)].targetWidth
-                newCol.currentWidth = newCol.targetWidth
-                newCol.presetIndex = -1
                 panels.insert(newCol, at: min(insertPi, panels.count))
                 addSubview(newCol.containerView)
             }
