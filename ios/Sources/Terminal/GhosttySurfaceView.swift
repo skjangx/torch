@@ -276,6 +276,7 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
     private let prefersSnapshotFallbackRendering = true
     var onFocusInputRequestedForTesting: (() -> Void)?
     private var surfaceTitle: String?
+    private var displayLink: CADisplayLink?
     private let snapshotFallbackView: UITextView = {
         let view = UITextView()
         view.backgroundColor = UIColor(red: 0x27/255.0, green: 0x28/255.0, blue: 0x22/255.0, alpha: 1)
@@ -347,6 +348,7 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
 
     @objc private func handleAppDidEnterBackground() {
         guard let surface else { return }
+        stopDisplayLink()
         setFocus(false)
         ghostty_surface_set_occlusion(surface, true)
     }
@@ -355,6 +357,7 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         guard let surface, window != nil else { return }
         ghostty_surface_set_occlusion(surface, false)
         setFocus(true)
+        startDisplayLink()
     }
 
     required init?(coder: NSCoder) {
@@ -386,7 +389,9 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
             syncSurfaceGeometry()
             setFocus(true)
             focusInput()
+            startDisplayLink()
         } else {
+            stopDisplayLink()
             setFocus(false)
         }
     }
@@ -505,6 +510,7 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
     }
 
     func disposeSurface() {
+        stopDisplayLink()
         guard let surface else { return }
         GhosttySurfaceView.unregister(surface: surface)
         self.surface = nil
@@ -523,9 +529,10 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
 
     private func sendText(_ text: String) {
         guard let surface else { return }
-        let count = text.utf8CString.count
+        let normalized = text.replacingOccurrences(of: "\n", with: "\r")
+        let count = normalized.utf8CString.count
         guard count > 1 else { return }
-        text.withCString { pointer in
+        normalized.withCString { pointer in
             ghostty_surface_text(surface, pointer, UInt(count - 1))
         }
     }
@@ -549,6 +556,25 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
             }
         }
         syncSurfaceGeometry()
+        startDisplayLink()
+    }
+
+    private func startDisplayLink() {
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: DisplayLinkProxy(target: self), selector: #selector(DisplayLinkProxy.handleDisplayLink))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc func handleDisplayLinkFire() {
+        guard let surface else { return }
+        ghostty_surface_draw_now(surface)
     }
 
     private func applyBackgroundColorFromConfig(_ config: ghostty_config_t) {
@@ -1155,5 +1181,17 @@ extension TerminalInputTextView: UITextViewDelegate {
             currentText: textView.text ?? "",
             isComposing: textView.markedTextRange != nil
         )
+    }
+}
+
+private class DisplayLinkProxy {
+    private weak var target: GhosttySurfaceView?
+
+    init(target: GhosttySurfaceView) {
+        self.target = target
+    }
+
+    @objc func handleDisplayLink() {
+        target?.handleDisplayLinkFire()
     }
 }
