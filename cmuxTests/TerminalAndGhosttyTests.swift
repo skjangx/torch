@@ -1993,11 +1993,7 @@ final class GhosttySurfaceOverlayTests: XCTestCase {
         override func scrollWheel(with event: NSEvent) {
             super.scrollWheel(with: event)
             guard let nextScrollbar else { return }
-            NotificationCenter.default.post(
-                name: .ghosttyDidUpdateScrollbar,
-                object: self,
-                userInfo: [GhosttyNotificationKey.scrollbar: nextScrollbar]
-            )
+            enqueueScrollbarUpdate(nextScrollbar)
         }
     }
 
@@ -2153,11 +2149,7 @@ final class GhosttySurfaceOverlayTests: XCTestCase {
             return
         }
 
-        NotificationCenter.default.post(
-            name: .ghosttyDidUpdateScrollbar,
-            object: surfaceView,
-            userInfo: [GhosttyNotificationKey.scrollbar: makeScrollbar(total: 100, offset: 90, len: 10)]
-        )
+        surfaceView.enqueueScrollbarUpdate(makeScrollbar(total: 100, offset: 90, len: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         XCTAssertEqual(scrollView.contentView.bounds.origin.y, 0, accuracy: 0.01)
 
@@ -2179,11 +2171,7 @@ final class GhosttySurfaceOverlayTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         XCTAssertEqual(scrollView.contentView.bounds.origin.y, 500, accuracy: 0.01)
 
-        NotificationCenter.default.post(
-            name: .ghosttyDidUpdateScrollbar,
-            object: surfaceView,
-            userInfo: [GhosttyNotificationKey.scrollbar: makeScrollbar(total: 100, offset: 90, len: 10)]
-        )
+        surfaceView.enqueueScrollbarUpdate(makeScrollbar(total: 100, offset: 90, len: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(0.01))
 
         XCTAssertEqual(
