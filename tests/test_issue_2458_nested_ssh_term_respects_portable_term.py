@@ -27,6 +27,7 @@ def _run_case(
     *,
     root: Path,
     wrapper_dir: Path,
+    features: str,
     term: str,
     expect_term: str,
     expect_infocmp: bool,
@@ -77,7 +78,7 @@ exit "${CMUX_TEST_INFOCMP_STATUS:-1}"
         env["CMUX_SHELL_INTEGRATION_DIR"] = str(wrapper_dir)
         env["CMUX_LOAD_GHOSTTY_ZSH_INTEGRATION"] = "1"
         env["CMUX_SHELL_INTEGRATION"] = "0"
-        env["GHOSTTY_SHELL_FEATURES"] = "ssh-env,ssh-terminfo"
+        env["GHOSTTY_SHELL_FEATURES"] = features
         env["CMUX_TEST_TERM_OUT"] = str(term_out)
         env["CMUX_TEST_SSH_ARGS_OUT"] = str(base / "ssh-args.txt")
         env["CMUX_TEST_INFOCMP_OUT"] = str(infocmp_out)
@@ -126,6 +127,7 @@ def main() -> int:
     ok, detail = _run_case(
         root=root,
         wrapper_dir=wrapper_dir,
+        features="ssh-env,ssh-terminfo",
         term="xterm-256color",
         expect_term="xterm-256color",
         expect_infocmp=False,
@@ -137,6 +139,31 @@ def main() -> int:
     ok, detail = _run_case(
         root=root,
         wrapper_dir=wrapper_dir,
+        features="ssh-env",
+        term="xterm-ghostty",
+        expect_term="xterm-256color",
+        expect_infocmp=False,
+    )
+    if not ok:
+        print(f"FAIL: ssh-env-only fallback case failed: {detail}")
+        return 1
+
+    ok, detail = _run_case(
+        root=root,
+        wrapper_dir=wrapper_dir,
+        features="ssh-env,ssh-terminfo",
+        term="tmux-256color",
+        expect_term="xterm-256color",
+        expect_infocmp=False,
+    )
+    if not ok:
+        print(f"FAIL: tmux/custom TERM normalization case failed: {detail}")
+        return 1
+
+    ok, detail = _run_case(
+        root=root,
+        wrapper_dir=wrapper_dir,
+        features="ssh-env,ssh-terminfo",
         term="xterm-ghostty",
         expect_term="xterm-256color",
         expect_infocmp=True,
