@@ -41,7 +41,13 @@ fi
             if [[ ! -r "${_cmux_ghostty:-}" && -n "${GHOSTTY_RESOURCES_DIR:-}" ]]; then
                 builtin typeset _cmux_ghostty="$GHOSTTY_RESOURCES_DIR/shell-integration/zsh/ghostty-integration"
             fi
-            [[ -r "$_cmux_ghostty" ]] && builtin source -- "$_cmux_ghostty"
+            if [[ -r "$_cmux_ghostty" ]]; then
+                builtin source -- "$_cmux_ghostty"
+                if [[ -n "${CMUX_SHELL_INTEGRATION_DIR:-}" ]]; then
+                    builtin typeset _cmux_ghostty_patch="$CMUX_SHELL_INTEGRATION_DIR/cmux-ghostty-zsh-patches.zsh"
+                    [[ -r "$_cmux_ghostty_patch" ]] && builtin source -- "$_cmux_ghostty_patch"
+                fi
+            fi
         fi
 
         # Load cmux integration (unless disabled)
@@ -51,5 +57,5 @@ fi
         fi
     fi
 
-    builtin unset _cmux_file _cmux_ghostty _cmux_integ
+    builtin unset _cmux_file _cmux_ghostty _cmux_ghostty_patch _cmux_integ
 }
