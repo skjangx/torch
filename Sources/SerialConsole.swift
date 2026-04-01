@@ -526,32 +526,45 @@ final class SerialTerminalIO {
         guard !invalidated, fileDescriptor >= 0 else { return }
 
         var buffer = [UInt8](repeating: 0, count: 4096)
-        let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
-        if count > 0 {
-            let data = Data(buffer[..<count])
-            DispatchQueue.main.async { [onReceiveData] in
-                onReceiveData(data)
+        while !invalidated, fileDescriptor >= 0 {
+            let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
+            if count > 0 {
+                let data = Data(buffer[..<count])
+                DispatchQueue.main.async { [onReceiveData] in
+                    onReceiveData(data)
+                }
+                return
             }
-            return
-        }
 
-        if count == 0 {
-            notifyRuntimeMessage(
-                String(localized: "serial.runtime.disconnected", defaultValue: "Serial device disconnected.")
-            )
-        } else {
-            let detail = String(cString: strerror(errno))
-            notifyRuntimeMessage(
-                String.localizedStringWithFormat(
-                    String(
-                        localized: "serial.runtime.readFailed",
-                        defaultValue: "Serial device read failed: %@"
-                    ),
-                    detail
+            if count == 0 {
+                notifyRuntimeMessage(
+                    String(localized: "serial.runtime.disconnected", defaultValue: "Serial device disconnected.")
                 )
-            )
+                invalidateOnIOQueue()
+                return
+            }
+
+            let errorCode = errno
+            switch errorCode {
+            case EINTR:
+                continue
+            case EAGAIN, EWOULDBLOCK:
+                return
+            default:
+                let detail = String(cString: strerror(errorCode))
+                notifyRuntimeMessage(
+                    String.localizedStringWithFormat(
+                        String(
+                            localized: "serial.runtime.readFailed",
+                            defaultValue: "Serial device read failed: %@"
+                        ),
+                        detail
+                    )
+                )
+                invalidateOnIOQueue()
+                return
+            }
         }
-        invalidateOnIOQueue()
     }
 
     private func notifyRuntimeMessage(_ message: String) {
@@ -667,8 +680,12 @@ final class SerialTerminalIO {
         _ = tcflush(fileDescriptor, TCIOFLUSH)
 
         let currentFlags = fcntl(fileDescriptor, F_GETFL)
-        if currentFlags >= 0 {
-            _ = fcntl(fileDescriptor, F_SETFL, currentFlags & ~O_NONBLOCK)
+        guard currentFlags >= 0 else {
+            throw SerialConsoleConnectionError(detail: String(cString: strerror(errno)))
+        }
+
+        guard fcntl(fileDescriptor, F_SETFL, currentFlags & ~O_NONBLOCK) >= 0 else {
+            throw SerialConsoleConnectionError(detail: String(cString: strerror(errno)))
         }
     }
 

@@ -642,12 +642,10 @@ extension Workspace {
             guard let terminalPanel else {
                 return nil
             }
-            if snapshot.terminal?.serialConfiguration == nil {
-                if let fallbackScrollback {
-                    restoredTerminalScrollbackByPanelId[terminalPanel.id] = fallbackScrollback
-                } else {
-                    restoredTerminalScrollbackByPanelId.removeValue(forKey: terminalPanel.id)
-                }
+            if let fallbackScrollback {
+                restoredTerminalScrollbackByPanelId[terminalPanel.id] = fallbackScrollback
+            } else {
+                restoredTerminalScrollbackByPanelId.removeValue(forKey: terminalPanel.id)
             }
             applySessionPanelMetadata(snapshot, toPanelId: terminalPanel.id)
             return terminalPanel.id

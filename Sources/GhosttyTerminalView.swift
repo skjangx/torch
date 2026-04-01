@@ -3937,8 +3937,6 @@ final class TerminalSurface: Identifiable, ObservableObject {
         if surface == nil {
             surfaceCallbackContext?.release()
             surfaceCallbackContext = nil
-            invalidateManualIO()
-            releaseRetainedSerialIO()
             print("Failed to create ghostty surface")
             #if DEBUG
             Self.surfaceLog("createSurface FAILED surface=\(id.uuidString): ghostty_surface_new returned nil")
@@ -4301,7 +4299,22 @@ final class TerminalSurface: Identifiable, ObservableObject {
     }
 
     private func processManualOutput(_ data: Data) {
-        guard let surface = surface, !data.isEmpty else { return }
+        guard !data.isEmpty else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                processManualOutputOnMain(data)
+            }
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            self?.processManualOutputOnMain(data)
+        }
+    }
+
+    @MainActor
+    private func processManualOutputOnMain(_ data: Data) {
+        guard let surface = liveSurfaceForGhosttyAccess(reason: "serial.processManualOutput") else { return }
         data.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress?.assumingMemoryBound(to: CChar.self) else { return }
             ghostty_surface_process_output(surface, baseAddress, UInt(rawBuffer.count))

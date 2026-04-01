@@ -5674,7 +5674,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func showOpenSerialConsolePanel() {
-        prepareForExplicitOpenIntentAtStartup()
         guard let configuration = SerialConsoleOpenDialog.present() else {
             return
         }
@@ -5715,6 +5714,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         _ configuration: SerialConsoleConfiguration,
         debugSource: String
     ) {
+        prepareForExplicitOpenIntentAtStartup()
         let workspaceTitle = configuration.displayTitle
         if addWorkspaceInPreferredMainWindow(
             title: workspaceTitle,
