@@ -1701,11 +1701,14 @@ func shouldSubmitCommandPaletteWithReturn(
 }
 
 func commandPaletteFieldEditorHasMarkedText(in window: NSWindow) -> Bool {
-    guard let editor = window.firstResponder as? NSTextView,
-          editor.isFieldEditor else {
-        return false
+    if let editor = window.firstResponder as? NSTextView {
+        return editor.hasMarkedText()
     }
-    return editor.hasMarkedText()
+    if let textField = window.firstResponder as? NSTextField,
+       let editor = textField.currentEditor() as? NSTextView {
+        return editor.hasMarkedText()
+    }
+    return false
 }
 
 func shouldHandleCommandPaletteShortcutEvent(

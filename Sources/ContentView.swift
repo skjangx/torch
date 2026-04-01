@@ -1089,11 +1089,20 @@ private final class WindowCommandPaletteOverlayController: NSObject {
         return false
     }
 
+    private func isPaletteMultilineTextView(_ textView: NSTextView) -> Bool {
+        guard !textView.isFieldEditor,
+              textView.isEditable,
+              textView.isSelectable,
+              !textView.isHiddenOrHasHiddenAncestor,
+              textView.isDescendant(of: containerView) else { return false }
+        return true
+    }
+
     private func isPaletteTextInputFirstResponder(_ responder: NSResponder?) -> Bool {
         guard let responder else { return false }
 
         if let textView = responder as? NSTextView {
-            return isPaletteFieldEditor(textView)
+            return isPaletteFieldEditor(textView) || isPaletteMultilineTextView(textView)
         }
 
         if let textField = responder as? NSTextField {
@@ -1101,6 +1110,30 @@ private final class WindowCommandPaletteOverlayController: NSObject {
         }
 
         return false
+    }
+
+    private func firstEditableTextInput(in view: NSView) -> NSResponder? {
+        if let textField = view as? NSTextField,
+           textField.isEditable,
+           textField.isEnabled,
+           !textField.isHiddenOrHasHiddenAncestor {
+            return textField
+        }
+
+        if let textView = view as? NSTextView,
+           !textView.isFieldEditor,
+           textView.isEditable,
+           textView.isSelectable,
+           !textView.isHiddenOrHasHiddenAncestor {
+            return textView
+        }
+
+        for subview in view.subviews {
+            if let match = firstEditableTextInput(in: subview) {
+                return match
+            }
+        }
+        return nil
     }
 
     private func firstEditableTextField(in view: NSView) -> NSTextField? {
@@ -1119,6 +1152,22 @@ private final class WindowCommandPaletteOverlayController: NSObject {
         return nil
     }
 
+    private func focusPaletteTextInput(in window: NSWindow) -> Bool {
+        guard let input = firstEditableTextInput(in: hostingView),
+              window.makeFirstResponder(input) else {
+            return false
+        }
+
+        if let textView = input as? NSTextView, !textView.isFieldEditor {
+            let length = (textView.string as NSString).length
+            textView.setSelectedRange(NSRange(location: length, length: 0))
+        } else {
+            normalizeSelectionAfterProgrammaticFocus()
+        }
+
+        return isPaletteTextInputFirstResponder(window.firstResponder)
+    }
+
     private func scheduleFocusIntoPalette(retries: Int = 4) {
         scheduledFocusWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -1135,18 +1184,12 @@ private final class WindowCommandPaletteOverlayController: NSObject {
             return
         }
 
-        if let textField = firstEditableTextField(in: hostingView),
-           window.makeFirstResponder(textField),
-           isPaletteTextInputFirstResponder(window.firstResponder) {
-            normalizeSelectionAfterProgrammaticFocus()
+        if focusPaletteTextInput(in: window) {
             return
         }
 
         if window.makeFirstResponder(containerView) {
-            if let textField = firstEditableTextField(in: hostingView),
-               window.makeFirstResponder(textField),
-               isPaletteTextInputFirstResponder(window.firstResponder) {
-                normalizeSelectionAfterProgrammaticFocus()
+            if focusPaletteTextInput(in: window) {
                 return
             }
         }

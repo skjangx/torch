@@ -58,7 +58,7 @@ final class WorkspaceDescriptionUITests: XCTestCase {
         let editor = requireDescriptionEditor(in: app, timeout: 5.0)
         XCTAssertTrue(editor.exists, "Expected workspace description editor to open")
 
-        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        editor.click()
         app.typeText(description)
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
 
@@ -97,6 +97,9 @@ final class WorkspaceDescriptionUITests: XCTestCase {
             app.textViews["CommandPaletteWorkspaceDescriptionEditor"],
             app.scrollViews["CommandPaletteWorkspaceDescriptionEditor"],
             app.otherElements["CommandPaletteWorkspaceDescriptionEditor"],
+            app.textViews["Edit Workspace Description…"],
+            app.textViews["Workspace description"],
+            app.staticTexts["Workspace description"],
             app.descendants(matching: .any).matching(identifier: "CommandPaletteWorkspaceDescriptionEditor").firstMatch,
         ]
     }
