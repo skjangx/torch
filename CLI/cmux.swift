@@ -9564,7 +9564,6 @@ struct CMUXCLI {
            !explicitPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             setenv("CMUX_SOCKET_PASSWORD", explicitPassword, 1)
         }
-        unsetenv("TERM_PROGRAM")
         for envVar in extraEnvVars {
             setenv(envVar.key, envVar.value, 1)
         }
@@ -10185,6 +10184,9 @@ struct CMUXCLI {
             termOverrideEnvVar: "CMUX_OMO_TERM",
             extraEnvVars: [(key: "OPENCODE_PORT", value: openCodePort)]
         )
+        // Unset TERM_PROGRAM for opencode specifically: it switches to
+        // light theme when it sees TERM_PROGRAM=ghostty.
+        unsetenv("TERM_PROGRAM")
     }
 
     private func runOMO(

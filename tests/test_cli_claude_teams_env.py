@@ -208,8 +208,8 @@ fs.writeFileSync(
             raise SystemExit(1)
 
         term_program_value = read_text(term_program_log)
-        if term_program_value != "__UNSET__":
-            print(f"FAIL: expected TERM_PROGRAM to be unset, got {term_program_value!r}")
+        if term_program_value == "__UNSET__":
+            print(f"FAIL: expected TERM_PROGRAM to be preserved, got unset")
             raise SystemExit(1)
 
         socket_path_value = read_text(socket_path_log)
