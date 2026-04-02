@@ -1258,7 +1258,6 @@ class GhosttyApp {
                     )
                 }
             }
-            return true
         }
         runtimeConfig.confirm_read_clipboard_cb = { userdata, content, state, _ in
             guard let content else { return }
