@@ -3813,6 +3813,16 @@ final class TerminalLocalFileURLResolutionTests: XCTestCase {
         }
     }
 
+    func testResolvesPathWithUnmatchedClosingDelimiter() throws {
+        try withTemporaryDirectory { root in
+            let sourceURL = root.appendingPathComponent("report.swift")
+            try Data("print(1)\n".utf8).write(to: sourceURL)
+
+            let resolved = try XCTUnwrap(resolveTerminalLocalFileURL("\(sourceURL.path))"))
+            XCTAssertEqual(resolved.path, sourceURL.path)
+        }
+    }
+
     func testResolvesHoveredLineFilenameWithSpaces() throws {
         try withTemporaryDirectory { root in
             let imageURL = root.appendingPathComponent("Group 8.png")

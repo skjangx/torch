@@ -479,12 +479,35 @@ private let terminalFileLinkWrappingPairs: [(Character, Character)] = [
 ]
 
 private let terminalFileLinkTrailingPunctuation = CharacterSet(charactersIn: ",.;:!?")
+private let terminalFileLinkTrailingClosingDelimiters: [Character: Character] = [
+    ")": "(",
+    "]": "[",
+    "}": "{",
+    ">": "<"
+]
 
 private func trimTrailingTerminalFileLinkPunctuation(_ value: String) -> String {
     var result = value
-    while let lastScalar = result.unicodeScalars.last,
-          terminalFileLinkTrailingPunctuation.contains(lastScalar) {
-        result.unicodeScalars.removeLast()
+    while let lastCharacter = result.last {
+        if let lastScalar = lastCharacter.unicodeScalars.first,
+           terminalFileLinkTrailingPunctuation.contains(lastScalar) {
+            result.removeLast()
+            continue
+        }
+
+        guard let openingDelimiter = terminalFileLinkTrailingClosingDelimiters[lastCharacter] else {
+            break
+        }
+
+        let openingCount = result.reduce(into: 0) { count, character in
+            if character == openingDelimiter { count += 1 }
+        }
+        let closingCount = result.reduce(into: 0) { count, character in
+            if character == lastCharacter { count += 1 }
+        }
+
+        guard closingCount > openingCount else { break }
+        result.removeLast()
     }
     return result
 }
