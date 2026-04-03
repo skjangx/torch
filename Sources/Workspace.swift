@@ -6482,7 +6482,7 @@ final class Workspace: Identifiable, ObservableObject {
             .replacingOccurrences(of: "\r", with: "\n")
         let trimmed = normalizedLineEndings?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return nil }
-        return trimmed
+        return normalizedLineEndings
     }
 
     func setCustomTitle(_ title: String?) {
