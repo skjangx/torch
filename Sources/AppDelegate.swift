@@ -2022,7 +2022,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var browserAddressBarFocusObserver: NSObjectProtocol?
     private var browserAddressBarBlurObserver: NSObjectProtocol?
     private let updateController = UpdateController()
-    private let mobilePresenceCoordinator = MobilePresenceCoordinator()
+    private lazy var mobilePresenceCoordinator = MobilePresenceCoordinator(
+        authProvider: AuthManager.shared,
+        authChangePublisher: AuthManager.shared.objectWillChange.eraseToAnyPublisher()
+    )
     private lazy var titlebarAccessoryController = UpdateTitlebarAccessoryController(viewModel: updateViewModel)
     private let windowDecorationsController = WindowDecorationsController()
     private var menuBarExtraController: MenuBarExtraController?
@@ -2226,7 +2229,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        let directories = externalOpenDirectories(from: urls)
+        let nonAuthURLs = urls.filter { url in
+            guard AuthCallbackRouter.isAuthCallbackURL(url) else { return true }
+            Task { @MainActor in
+                do {
+                    try await AuthManager.shared.handleCallbackURL(url)
+                } catch {
+                    NSLog("auth.callback failed: %@", error.localizedDescription)
+                }
+            }
+            return false
+        }
+
+        let directories = externalOpenDirectories(from: nonAuthURLs)
         guard !directories.isEmpty else { return }
 
         prepareForExplicitOpenIntentAtStartup()

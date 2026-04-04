@@ -3917,7 +3917,10 @@ struct SettingsView: View {
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
     @AppStorage("sidebarTintHexDark") private var sidebarTintHexDark: String?
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
+    @AppStorage(SettingsPIIDisplayMode.key)
+    private var settingsPIIDisplayMode = SettingsPIIDisplayMode.defaultValue
 
+    @StateObject private var authManager = AuthManager.shared
     @ObservedObject private var notificationStore = TerminalNotificationStore.shared
     @State private var shortcutResetToken = UUID()
     @State private var topBlurOpacity: Double = 0
@@ -4373,11 +4376,217 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Account helpers
+
+    private var selectedSettingsPIIDisplayMode: SettingsPIIDisplayMode {
+        SettingsPIIDisplayMode(rawValue: settingsPIIDisplayMode) ?? .visible
+    }
+
+    private var settingsPIIDisplayModeSelection: Binding<String> {
+        Binding(
+            get: { selectedSettingsPIIDisplayMode.rawValue },
+            set: { settingsPIIDisplayMode = $0 }
+        )
+    }
+
+    private var hidesSensitiveSettingsDetails: Bool {
+        selectedSettingsPIIDisplayMode == .hidden
+    }
+
+    private var accountEmailText: String {
+        if let email = authManager.currentUser?.primaryEmail?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !email.isEmpty {
+            return email
+        }
+        if let displayName = authManager.currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !displayName.isEmpty {
+            return displayName
+        }
+        return String(
+            localized: "settings.account.state.signedIn",
+            defaultValue: "Signed in"
+        )
+    }
+
+    private var accountPrimaryEmailText: String? {
+        guard let email = authManager.currentUser?.primaryEmail?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else {
+            return nil
+        }
+        return email
+    }
+
+    private var hiddenSettingsValueText: String {
+        String(
+            localized: "settings.account.hiddenValue",
+            defaultValue: "Hidden"
+        )
+    }
+
+    private var hiddenSettingsSubtitleText: String {
+        String(
+            localized: "settings.account.hiddenSubtitle",
+            defaultValue: "Personal info is hidden in Settings."
+        )
+    }
+
+    private var accountStatusSubtitle: String {
+        if authManager.isAuthenticated {
+            return String(
+                localized: "settings.account.subtitle.signedIn",
+                defaultValue: "This Mac can appear in your mobile terminal list."
+            )
+        }
+        return String(
+            localized: "settings.account.subtitle.signedOut",
+            defaultValue: "Optional. Sign in so this Mac appears in your mobile terminal list."
+        )
+    }
+
+    private var selectedAccountTeamName: String {
+        if let selectedTeamID = authManager.resolvedTeamID,
+           let team = authManager.availableTeams.first(where: { $0.id == selectedTeamID }) {
+            return team.displayName
+        }
+        return authManager.availableTeams.first?.displayName ?? String(
+            localized: "settings.account.team.none",
+            defaultValue: "No team"
+        )
+    }
+
+    private var displayedAccountTeamName: String {
+        hidesSensitiveSettingsDetails ? hiddenSettingsValueText : selectedAccountTeamName
+    }
+
+    private var accountTeamSelection: Binding<String> {
+        Binding(
+            get: { authManager.resolvedTeamID ?? "" },
+            set: { newValue in
+                authManager.selectedTeamID = newValue.isEmpty ? nil : newValue
+            }
+        )
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .top) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    SettingsSectionHeader(title: String(localized: "settings.section.account", defaultValue: "Account"))
+                    SettingsCard {
+                        SettingsCardRow(
+                            String(localized: "settings.account.title", defaultValue: "cmux Account"),
+                            subtitle: accountStatusSubtitle,
+                            controlWidth: authManager.isAuthenticated ? nil : pickerColumnWidth
+                        ) {
+                            if authManager.isLoading || authManager.isRestoringSession {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if authManager.isAuthenticated {
+                                HStack(spacing: 10) {
+                                    if authManager.didCompleteBrowserSignIn {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundStyle(.green)
+                                            Text(
+                                                String(
+                                                    localized: "settings.account.state.signedIn",
+                                                    defaultValue: "Signed in"
+                                                )
+                                            )
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                        }
+                                        .accessibilityIdentifier("settings.account.signedInBanner")
+                                    }
+
+                                    Button(
+                                        String(localized: "settings.account.signOut", defaultValue: "Sign Out")
+                                    ) {
+                                        Task {
+                                            await authManager.signOut()
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                }
+                            } else {
+                                Button(
+                                    String(localized: "settings.account.signIn", defaultValue: "Sign In in Browser")
+                                ) {
+                                    authManager.beginSignInInBrowser()
+                                }
+                                .controlSize(.small)
+                                .accessibilityIdentifier("settings.account.signIn")
+                            }
+                        }
+
+                        if authManager.isAuthenticated {
+                            SettingsCardDivider()
+
+                            SettingsPickerRow(
+                                String(localized: "settings.account.displayMode", defaultValue: "Display Mode"),
+                                subtitle: String(
+                                    localized: "settings.account.displayMode.subtitle",
+                                    defaultValue: "Hide personal info while presenting Settings."
+                                ),
+                                controlWidth: pickerColumnWidth,
+                                selection: settingsPIIDisplayModeSelection
+                            ) {
+                                ForEach(SettingsPIIDisplayMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode.rawValue)
+                                }
+                            }
+
+                            SettingsCardDivider()
+
+                            SettingsCardRow(
+                                String(localized: "settings.account.email", defaultValue: "Email"),
+                                subtitle: hidesSensitiveSettingsDetails ? hiddenSettingsSubtitleText : nil,
+                                controlWidth: pickerColumnWidth
+                            ) {
+                                Text(hidesSensitiveSettingsDetails ? hiddenSettingsValueText : accountEmailText)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: pickerColumnWidth, alignment: .trailing)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+
+                        if authManager.isAuthenticated, !authManager.availableTeams.isEmpty {
+                            SettingsCardDivider()
+
+                            SettingsCardRow(
+                                String(localized: "settings.account.team", defaultValue: "Team"),
+                                subtitle: String(
+                                    localized: "settings.account.team.subtitle",
+                                    defaultValue: "The first team is selected automatically for mobile sync."
+                                ),
+                                controlWidth: pickerColumnWidth
+                            ) {
+                                if hidesSensitiveSettingsDetails {
+                                    Text(displayedAccountTeamName)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: pickerColumnWidth, alignment: .trailing)
+                                } else if authManager.availableTeams.count > 1 {
+                                    Picker("", selection: accountTeamSelection) {
+                                        ForEach(authManager.availableTeams) { team in
+                                            Text(team.displayName).tag(team.id)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .frame(width: pickerColumnWidth)
+                                } else {
+                                    Text(displayedAccountTeamName)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: pickerColumnWidth, alignment: .trailing)
+                                }
+                            }
+                        }
+                    }
+
                     SettingsSectionHeader(title: String(localized: "settings.section.app", defaultValue: "App"))
                     SettingsCard {
                         SettingsCardRow(

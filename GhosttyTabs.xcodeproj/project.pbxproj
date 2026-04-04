@@ -7,6 +7,10 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		A50012B1 /* Auth/AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50012B5 /* Auth/AuthManager.swift */; };
+		A50012B2 /* Auth/AuthEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50012B6 /* Auth/AuthEnvironment.swift */; };
+		A50012B3 /* Auth/AuthCallbackRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50012B7 /* Auth/AuthCallbackRouter.swift */; };
+		A50012B4 /* Auth/AuthSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50012B8 /* Auth/AuthSettingsStore.swift */; };
 		5YNCA00201000001 /* Sync/MachineIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5YNCA00101000001 /* Sync/MachineIdentityStore.swift */; };
 		5YNCA00201000002 /* Sync/MachineSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5YNCA00101000002 /* Sync/MachineSessionClient.swift */; };
 		5YNCA00201000003 /* Sync/TailscaleStatusProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5YNCA00101000003 /* Sync/TailscaleStatusProvider.swift */; };
@@ -151,6 +155,10 @@
 /* End PBXContainerItemProxy section */
 
 		/* Begin PBXFileReference section */
+		A50012B5 /* Auth/AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth/AuthManager.swift; sourceTree = "<group>"; };
+		A50012B6 /* Auth/AuthEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth/AuthEnvironment.swift; sourceTree = "<group>"; };
+		A50012B7 /* Auth/AuthCallbackRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth/AuthCallbackRouter.swift; sourceTree = "<group>"; };
+		A50012B8 /* Auth/AuthSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth/AuthSettingsStore.swift; sourceTree = "<group>"; };
 		5YNCA00101000001 /* Sync/MachineIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sync/MachineIdentityStore.swift; sourceTree = "<group>"; };
 		5YNCA00101000002 /* Sync/MachineSessionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sync/MachineSessionClient.swift; sourceTree = "<group>"; };
 		5YNCA00101000003 /* Sync/TailscaleStatusProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sync/TailscaleStatusProvider.swift; sourceTree = "<group>"; };
@@ -404,6 +412,10 @@
 				A5001614 /* SessionPersistence.swift */,
 				A5001616 /* TerminalImageTransfer.swift */,
 				A5001618 /* TerminalSSHSessionDetector.swift */,
+				A50012B5 /* Auth/AuthManager.swift */,
+				A50012B6 /* Auth/AuthEnvironment.swift */,
+				A50012B7 /* Auth/AuthCallbackRouter.swift */,
+				A50012B8 /* Auth/AuthSettingsStore.swift */,
 				5YNCA00101000001 /* Sync/MachineIdentityStore.swift */,
 				5YNCA00101000002 /* Sync/MachineSessionClient.swift */,
 				5YNCA00101000003 /* Sync/TailscaleStatusProvider.swift */,
@@ -497,6 +509,7 @@
 					A5001271 /* PostHog */,
 					A5001261 /* Bonsplit */,
 					A5001291 /* MarkdownUI */,
+					A50012A1 /* StackAuth */,
 				);
 			name = GhosttyTabs;
 			productName = GhosttyTabs;
@@ -580,6 +593,7 @@
 					A5001272 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 					A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 					A5001260 /* XCLocalSwiftPackageReference "bonsplit" */,
+					A50012A0 /* XCLocalSwiftPackageReference "stack-auth-swift-sdk-prerelease" */,
 				);
 			productRefGroup = A5001042 /* Products */;
 			projectDirPath = "";
@@ -655,6 +669,10 @@
 				A5001615 /* SessionPersistence.swift in Sources */,
 				A5001617 /* TerminalImageTransfer.swift in Sources */,
 				A5001619 /* TerminalSSHSessionDetector.swift in Sources */,
+				A50012B1 /* Auth/AuthManager.swift in Sources */,
+				A50012B2 /* Auth/AuthEnvironment.swift in Sources */,
+				A50012B3 /* Auth/AuthCallbackRouter.swift in Sources */,
+				A50012B4 /* Auth/AuthSettingsStore.swift in Sources */,
 				5YNCA00201000001 /* Sync/MachineIdentityStore.swift in Sources */,
 				5YNCA00201000002 /* Sync/MachineSessionClient.swift in Sources */,
 				5YNCA00201000003 /* Sync/TailscaleStatusProvider.swift in Sources */,
@@ -816,6 +834,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app.debug;
 				PRODUCT_NAME = "cmux DEV";
+				CMUX_AUTH_CALLBACK_SCHEME = "cmux-dev";
 				SPARKLE_PUBLIC_KEY = "avjcgKibf1FTvhIjLBxhd+0HSpsXU4D0IGlVk8cgqRc=";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "cmux-Bridging-Header.h";
@@ -853,6 +872,7 @@
 					"-framework",
 					Carbon,
 				);
+				CMUX_AUTH_CALLBACK_SCHEME = cmux;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app;
 				PRODUCT_NAME = cmux;
@@ -998,6 +1018,10 @@
 				isa = XCLocalSwiftPackageReference;
 				relativePath = vendor/bonsplit;
 			};
+			A50012A0 /* XCLocalSwiftPackageReference "stack-auth-swift-sdk-prerelease" */ = {
+				isa = XCLocalSwiftPackageReference;
+				relativePath = "vendor/stack-auth-swift-sdk-prerelease";
+			};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1025,6 +1049,11 @@
 				isa = XCSwiftPackageProductDependency;
 				package = A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 				productName = MarkdownUI;
+			};
+			A50012A1 /* StackAuth */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = A50012A0 /* XCLocalSwiftPackageReference "stack-auth-swift-sdk-prerelease" */;
+				productName = StackAuth;
 			};
 /* End XCSwiftPackageProductDependency section */
 
