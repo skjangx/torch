@@ -1279,14 +1279,14 @@ private struct SettingsAboutTitlebarDebugOptions: Equatable {
             return SettingsAboutTitlebarDebugOptions(
                 overridesEnabled: false,
                 windowTitle: "Settings",
-                titleVisibility: .hidden,
-                titlebarAppearsTransparent: true,
-                movableByWindowBackground: true,
+                titleVisibility: .visible,
+                titlebarAppearsTransparent: false,
+                movableByWindowBackground: false,
                 titled: true,
                 closable: true,
                 miniaturizable: true,
                 resizable: true,
-                fullSizeContentView: true,
+                fullSizeContentView: false,
                 showToolbar: false,
                 toolbarStyle: .unifiedCompact
             )
@@ -2478,7 +2478,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private init() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 840, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -5828,6 +5828,7 @@ struct SettingsView: View {
                     selectedSection = resolved
                 }
             }
+            .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button {
