@@ -5473,14 +5473,22 @@ enum LocalTerminalDaemonBridge {
         if config == nil,
            let repoRoot = environment["CMUXTERM_REPO_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !repoRoot.isEmpty {
-            let candidate = URL(fileURLWithPath: repoRoot, isDirectory: true)
-                .appendingPathComponent("daemon/remote/zig/zig-out/bin/cmuxd-remote", isDirectory: false)
-                .path
-            if fileManager.isExecutableFile(atPath: candidate) {
-                config = LocalTerminalDaemonConfiguration(
-                    socketPath: rawSocketPath,
-                    daemonBinaryPath: candidate
-                )
+            let repoRootURL = URL(fileURLWithPath: repoRoot, isDirectory: true)
+            let relativePaths = [
+                "daemon/remote/rust/target/debug/cmuxd-remote",
+                "daemon/remote/zig/zig-out/bin/cmuxd-remote",
+            ]
+            for relativePath in relativePaths {
+                let candidate = repoRootURL
+                    .appendingPathComponent(relativePath, isDirectory: false)
+                    .path
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    config = LocalTerminalDaemonConfiguration(
+                        socketPath: rawSocketPath,
+                        daemonBinaryPath: candidate
+                    )
+                    break
+                }
             }
         }
 
