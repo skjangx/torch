@@ -1918,8 +1918,16 @@ final class WindowBrowserSlotView: NSView {
             if current.isDescendant(of: primaryWebView) {
                 continue
             }
+            if current.isHidden || current.alphaValue <= 0 {
+                continue
+            }
             if String(describing: type(of: current)).contains("WK") {
-                return true
+                let width = max(current.frame.width, current.bounds.width)
+                let height = max(current.frame.height, current.bounds.height)
+                if width > 1, height > 1 {
+                    return true
+                }
+                continue
             }
             stack.append(contentsOf: current.subviews)
         }

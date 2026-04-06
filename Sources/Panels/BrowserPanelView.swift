@@ -613,6 +613,13 @@ struct BrowserPanelView: View {
                 panel.cancelPendingDeveloperToolsVisibilityLossCheck()
                 return
             }
+            if panel.shouldUseLocalInlineDeveloperToolsHosting() {
+                // Workspace switches keep the attached inspector alive off-screen.
+                // Treating that hide as a manual X-close can clear the restore intent
+                // before the original local-inline host becomes visible again.
+                panel.cancelPendingDeveloperToolsVisibilityLossCheck()
+                return
+            }
             // Pane/workspace churn can briefly mark the browser hidden before the
             // final host settles. Only treat a stable hide as a signal to consume
             // an attached-inspector X-close.
@@ -637,6 +644,7 @@ struct BrowserPanelView: View {
                 // `isVisibleInUI` never flips to false. Check for an attached-inspector
                 // X-close when focus leaves as well so the persisted intent stays in sync.
                 DispatchQueue.main.async {
+                    guard isVisibleInUI else { return }
                     panel.scheduleDeveloperToolsVisibilityLossCheck()
                 }
             }
@@ -1127,7 +1135,6 @@ struct BrowserPanelView: View {
     private var webView: some View {
         let useLocalInlineDeveloperToolsHosting =
             panel.shouldUseLocalInlineDeveloperToolsHosting() &&
-            isVisibleInUI &&
             isCurrentPaneOwner
 
         return Group {
@@ -4776,8 +4783,16 @@ struct WebViewRepresentable: NSViewRepresentable {
                 if current.isDescendant(of: primaryWebView) {
                     continue
                 }
+                if current.isHidden || current.alphaValue <= 0 {
+                    continue
+                }
                 if String(describing: type(of: current)).contains("WK") {
-                    return true
+                    let width = max(current.frame.width, current.bounds.width)
+                    let height = max(current.frame.height, current.bounds.height)
+                    if width > 1, height > 1 {
+                        return true
+                    }
+                    continue
                 }
                 stack.append(contentsOf: current.subviews)
             }
