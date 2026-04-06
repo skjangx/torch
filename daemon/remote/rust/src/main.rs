@@ -165,6 +165,17 @@ fn run_tmux_cli(args: &[String]) -> i32 {
 }
 
 fn run_cli_relay(args: &[String]) -> i32 {
+    let filtered = strip_socket_flag(args);
+    if filtered.is_empty()
+        || matches!(
+            filtered.first().map(String::as_str),
+            Some("--help") | Some("-h") | Some("help")
+        )
+    {
+        cli_usage(&mut io::stdout());
+        return 0;
+    }
+
     let socket = match find_socket_flag(args)
         .or_else(|| env::var("CMUX_SOCKET_PATH").ok())
         .or_else(read_socket_addr_file)
@@ -177,7 +188,6 @@ fn run_cli_relay(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let filtered = strip_socket_flag(args);
     if filtered.first().map(String::as_str) == Some("rpc") {
         if filtered.len() < 2 {
             eprintln!("cmux: rpc requires a method");
@@ -264,4 +274,11 @@ fn usage(stderr: &mut dyn Write) {
     let _ = writeln!(stderr, "  cmuxd-remote amux <command> [args...]");
     let _ = writeln!(stderr, "  cmuxd-remote tmux <command> [args...]");
     let _ = writeln!(stderr, "  cmuxd-remote cli rpc <method> [json-params]");
+}
+
+fn cli_usage(output: &mut dyn Write) {
+    let _ = writeln!(
+        output,
+        "Usage: cmux [--socket <path>] [--json] <command> [args...]"
+    );
 }

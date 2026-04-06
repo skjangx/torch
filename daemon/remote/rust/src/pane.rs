@@ -299,6 +299,7 @@ fn run_pane_actor(
             recv(reader_rx) -> message => {
                 match message {
                     Ok(ReaderEvent::Data(data)) => {
+                        let normalized = normalize_line_endings(&data);
                         let mut emit_busy = false;
                         let _ = runtime.terminal.feed(&data);
                         runtime.metadata.feed(&data);
@@ -311,8 +312,8 @@ fn run_pane_actor(
                             }
                             state.title = runtime.metadata.title().to_string();
                             state.pwd = runtime.metadata.pwd().to_string();
-                            state.buffer.extend_from_slice(&data);
-                            state.next_offset += data.len() as u64;
+                            state.buffer.extend_from_slice(&normalized);
+                            state.next_offset += normalized.len() as u64;
                             state.last_output_at = Instant::now();
                             if state.buffer.len() > MAX_RAW_BUFFER_BYTES {
                                 let overflow = state.buffer.len() - MAX_RAW_BUFFER_BYTES;
@@ -330,7 +331,7 @@ fn run_pane_actor(
                         events(PaneRuntimeEvent::Output {
                             session_id: session_id.clone(),
                             pane_id: pane_id.clone(),
-                            len: data.len(),
+                            len: normalized.len(),
                         });
                     }
                     Ok(ReaderEvent::Eof) | Err(_) => {
@@ -475,4 +476,20 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ReaderEvent>) {
             }
         }
     }
+}
+
+fn normalize_line_endings(data: &[u8]) -> Vec<u8> {
+    if !data.windows(2).any(|window| window == b"\r\n") {
+        return data.to_vec();
+    }
+    let mut out = Vec::with_capacity(data.len());
+    let mut idx = 0;
+    while idx < data.len() {
+        if data[idx] == b'\r' && idx + 1 < data.len() && data[idx + 1] == b'\n' {
+            idx += 1;
+        }
+        out.push(data[idx]);
+        idx += 1;
+    }
+    out
 }

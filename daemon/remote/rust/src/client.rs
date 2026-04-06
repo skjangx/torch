@@ -370,104 +370,121 @@ fn session_attach(socket_path: &str, session_id: &str) -> Result<i32, String> {
         }),
     )?;
 
-    let raw_mode = RawModeGuard::new()?;
     let stop = Arc::new(AtomicBool::new(false));
+    let result = (|| -> Result<i32, String> {
+        let raw_mode = RawModeGuard::new()?;
 
-    {
-        let stop = Arc::clone(&stop);
-        let socket_path = socket_path.to_string();
-        let session_id = session_id.to_string();
-        let attachment_id = attachment_id.clone();
-        thread::spawn(move || {
-            let mut signals = match Signals::new([SIGWINCH]) {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            for _ in signals.forever() {
-                if stop.load(Ordering::Relaxed) {
-                    break;
+        {
+            let stop = Arc::clone(&stop);
+            let socket_path = socket_path.to_string();
+            let session_id = session_id.to_string();
+            let attachment_id = attachment_id.clone();
+            thread::spawn(move || {
+                let mut signals = match Signals::new([SIGWINCH]) {
+                    Ok(value) => value,
+                    Err(_) => return,
+                };
+                for _ in signals.forever() {
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let (cols, rows) = current_size();
+                    if let Ok(mut client) = UnixRpcClient::connect(&socket_path) {
+                        let _ = client.call_value(
+                            "session.resize".to_string(),
+                            json!({
+                                "session_id": session_id,
+                                "attachment_id": attachment_id,
+                                "cols": cols,
+                                "rows": rows,
+                            }),
+                        );
+                    }
                 }
-                let (cols, rows) = current_size();
-                if let Ok(mut client) = UnixRpcClient::connect(&socket_path) {
-                    let _ = client.call_value(
-                        "session.resize".to_string(),
+            });
+        }
+
+        {
+            let stop = Arc::clone(&stop);
+            let socket_path = socket_path.to_string();
+            let session_id = session_id.to_string();
+            thread::spawn(move || {
+                let mut client = match UnixRpcClient::connect(&socket_path) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        stop.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                };
+                let mut offset = 0_u64;
+                let stdout = io::stdout();
+                let mut stdout = stdout.lock();
+                while !stop.load(Ordering::Relaxed) {
+                    match client.call_value(
+                        "terminal.read".to_string(),
                         json!({
                             "session_id": session_id,
-                            "attachment_id": attachment_id,
-                            "cols": cols,
-                            "rows": rows,
+                            "offset": offset,
+                            "max_bytes": 32 * 1024,
+                            "timeout_ms": 200,
                         }),
-                    );
-                }
-            }
-        });
-    }
-
-    {
-        let stop = Arc::clone(&stop);
-        let socket_path = socket_path.to_string();
-        let session_id = session_id.to_string();
-        thread::spawn(move || {
-            let mut client = match UnixRpcClient::connect(&socket_path) {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            let mut offset = 0_u64;
-            let stdout = io::stdout();
-            let mut stdout = stdout.lock();
-            while !stop.load(Ordering::Relaxed) {
-                match client.call_value(
-                    "terminal.read".to_string(),
-                    json!({
-                        "session_id": session_id,
-                        "offset": offset,
-                        "max_bytes": 32 * 1024,
-                        "timeout_ms": 200,
-                    }),
-                ) {
-                    Ok(value) => {
-                        if let Some(next_offset) = value.get("offset").and_then(Value::as_u64) {
-                            offset = next_offset;
-                        }
-                        if let Some(data) = value.get("data").and_then(Value::as_str) {
-                            if let Ok(decoded) =
-                                base64::engine::general_purpose::STANDARD.decode(data)
-                            {
-                                let _ = stdout.write_all(&decoded);
-                                let _ = stdout.flush();
+                    ) {
+                        Ok(value) => {
+                            if let Some(next_offset) = value.get("offset").and_then(Value::as_u64) {
+                                offset = next_offset;
+                            }
+                            if let Some(data) = value.get("data").and_then(Value::as_str) {
+                                if let Ok(decoded) =
+                                    base64::engine::general_purpose::STANDARD.decode(data)
+                                {
+                                    let _ = stdout.write_all(&decoded);
+                                    let _ = stdout.flush();
+                                }
+                            }
+                            if value.get("eof").and_then(Value::as_bool) == Some(true) {
+                                stop.store(true, Ordering::Relaxed);
+                                break;
                             }
                         }
-                        if value.get("eof").and_then(Value::as_bool) == Some(true) {
+                        Err(err) if err == "terminal read timed out" => continue,
+                        Err(_) => {
+                            stop.store(true, Ordering::Relaxed);
                             break;
                         }
                     }
-                    Err(err) if err == "terminal read timed out" => continue,
-                    Err(_) => break,
                 }
-            }
-        });
-    }
+            });
+        }
 
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-    let mut buf = [0_u8; 1024];
-    loop {
-        let len = stdin.read(&mut buf).map_err(|err| err.to_string())?;
-        if len == 0 {
-            break;
+        let stdin = io::stdin();
+        let mut stdin = stdin.lock();
+        let mut buf = [0_u8; 1024];
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            if !poll_stdin(200)? {
+                continue;
+            }
+            let len = stdin.read(&mut buf).map_err(|err| err.to_string())?;
+            if len == 0 {
+                break;
+            }
+            if buf[..len].contains(&0x1c) {
+                break;
+            }
+            let data = base64::engine::general_purpose::STANDARD.encode(&buf[..len]);
+            let _ = control.call_value(
+                "terminal.write".to_string(),
+                json!({
+                    "session_id": session_id,
+                    "data": data,
+                }),
+            )?;
         }
-        if buf[..len].contains(&0x1c) {
-            break;
-        }
-        let data = base64::engine::general_purpose::STANDARD.encode(&buf[..len]);
-        let _ = control.call_value(
-            "terminal.write".to_string(),
-            json!({
-                "session_id": session_id,
-                "data": data,
-            }),
-        )?;
-    }
+        drop(raw_mode);
+        Ok(0)
+    })();
 
     stop.store(true, Ordering::Relaxed);
     let _ = control.call_value(
@@ -477,8 +494,7 @@ fn session_attach(socket_path: &str, session_id: &str) -> Result<i32, String> {
             "attachment_id": attachment_id,
         }),
     );
-    drop(raw_mode);
-    Ok(0)
+    result
 }
 
 fn print_session_usage() {
@@ -566,6 +582,23 @@ impl Drop for RawModeGuard {
             let _ = libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.original);
         }
     }
+}
+
+fn poll_stdin(timeout_ms: i32) -> Result<bool, String> {
+    let mut pollfd = libc::pollfd {
+        fd: libc::STDIN_FILENO,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+    if ready < 0 {
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::Interrupted {
+            return Ok(false);
+        }
+        return Err(err.to_string());
+    }
+    Ok(ready > 0 && (pollfd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR)) != 0)
 }
 
 fn unix_now() -> u64 {

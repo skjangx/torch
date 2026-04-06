@@ -256,7 +256,14 @@ impl Daemon {
         stream: S,
         authorizer: Option<DirectAuthorizer>,
     ) -> Result<(), String> {
-        let mut reader = BufReader::new(stream);
+        self.serve_reader(BufReader::new(stream), authorizer)
+    }
+
+    fn serve_reader<S: Read + Write>(
+        &self,
+        mut reader: BufReader<S>,
+        authorizer: Option<DirectAuthorizer>,
+    ) -> Result<(), String> {
         let mut authorizer = authorizer;
         loop {
             let response = match read_frame(&mut reader) {
@@ -297,14 +304,36 @@ impl Daemon {
             Ok(FrameRead::Eof) => return Ok(()),
             Err(err) => return Err(err.to_string()),
         };
-        let value: Value = serde_json::from_slice(trim_crlf(&frame))
-            .map_err(|_| "invalid JSON handshake".to_string())?;
-        let ticket = value
-            .get("ticket")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "ticket is required".to_string())?;
-        let claims = verify_ticket(ticket, ticket_secret, expected_server_id)
+        let value: Value = match serde_json::from_slice(trim_crlf(&frame)) {
+            Ok(value) => value,
+            Err(_) => {
+                write_response(
+                    reader.get_mut(),
+                    &rpc_error(None, "invalid_request", "invalid JSON handshake"),
+                )
+                .map_err(|err| err.to_string())?;
+                return Ok(());
+            }
+        };
+        let Some(ticket) = value.get("ticket").and_then(Value::as_str) else {
+            write_response(
+                reader.get_mut(),
+                &rpc_error(None, "invalid_request", "ticket is required"),
+            )
             .map_err(|err| err.to_string())?;
+            return Ok(());
+        };
+        let claims = match verify_ticket(ticket, ticket_secret, expected_server_id) {
+            Ok(claims) => claims,
+            Err(err) => {
+                write_response(
+                    reader.get_mut(),
+                    &rpc_error(None, "unauthorized", err.to_string()),
+                )
+                .map_err(|write_err| write_err.to_string())?;
+                return Ok(());
+            }
+        };
         if !has_session_capability(&claims.capabilities) {
             write_response(
                 reader.get_mut(),
@@ -331,7 +360,7 @@ impl Daemon {
             &rpc_ok(None, json!({ "authenticated": true })),
         )
         .map_err(|err| err.to_string())?;
-        self.serve_stream(reader.into_inner(), Some(DirectAuthorizer::new(claims)))
+        self.serve_reader(reader, Some(DirectAuthorizer::new(claims)))
     }
 
     fn parse_and_dispatch(
@@ -1037,17 +1066,15 @@ impl Daemon {
             let mut state = self.inner.state.lock().unwrap();
             let session_id = match requested_id {
                 Some(value) => value.to_string(),
-                None => {
-                    let id = format!("sess-{}", state.next_session_id);
-                    state.next_session_id += 1;
-                    id
-                }
+                None => allocate_generated_session_id(&mut state),
             };
-            state
-                .sessions
-                .entry(session_id.clone())
-                .or_insert_with(|| Arc::new(Session::new(session_id)))
-                .clone()
+            if let Some(existing) = state.sessions.get(&session_id) {
+                existing.clone()
+            } else {
+                let session = Arc::new(Session::new(session_id.clone()));
+                state.sessions.insert(session_id, Arc::clone(&session));
+                session
+            }
         };
         Ok(session.snapshot())
     }
@@ -1076,11 +1103,7 @@ impl Daemon {
                     }
                     value.to_string()
                 }
-                None => {
-                    let value = format!("sess-{}", state.next_session_id);
-                    state.next_session_id += 1;
-                    value
-                }
+                None => allocate_generated_session_id(&mut state),
             };
             let attachment_id = format!("att-{}", state.next_attachment_id);
             state.next_attachment_id += 1;
@@ -1094,9 +1117,6 @@ impl Daemon {
                 .attach(attachment_id.clone(), cols, rows)
                 .map_err(|err| OpenTerminalError::Other(format!("{err:?}")))?;
             let (effective_cols, effective_rows) = session.effective_size();
-            state
-                .sessions
-                .insert(session_id.clone(), Arc::clone(&session));
             (
                 session,
                 session_id,
@@ -1135,6 +1155,18 @@ impl Daemon {
                 last_pane: None,
             });
             inner.active_window = 0;
+        }
+
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            if state.sessions.contains_key(&session_id) {
+                drop(state);
+                handle.close();
+                return Err(OpenTerminalError::AlreadyExists);
+            }
+            state
+                .sessions
+                .insert(session_id.clone(), Arc::clone(&session));
         }
 
         let mut state = self.inner.state.lock().unwrap();
@@ -2225,6 +2257,9 @@ impl Daemon {
             return Ok(target);
         }
 
+        if !raw_target.starts_with('%') {
+            return Err(format!("pane not found: {raw_target}"));
+        }
         let lookup = raw_target.trim_start_matches('%');
         for session in self.sessions() {
             let found = {
@@ -3137,7 +3172,13 @@ impl DirectAuthorizer {
                 if session_id.is_empty() || attachment_id.is_empty() {
                     return None;
                 }
-                let (allowed_session, allowed_attachment) = self.allowed_scope()?;
+                let Some((allowed_session, allowed_attachment)) = self.allowed_scope() else {
+                    return Some(rpc_error(
+                        None,
+                        "unauthorized",
+                        "direct session.attach tickets require session and attachment scope",
+                    ));
+                };
                 if allowed_session != session_id || allowed_attachment != attachment_id {
                     Some(rpc_error(
                         None,
@@ -3400,6 +3441,16 @@ fn rebase_optional_index(
     Some(rebase_index(index, removed, len_after_remove))
 }
 
+fn allocate_generated_session_id(state: &mut CoreState) -> String {
+    loop {
+        let value = format!("sess-{}", state.next_session_id);
+        state.next_session_id += 1;
+        if !state.sessions.contains_key(&value) {
+            return value;
+        }
+    }
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -3434,7 +3485,15 @@ fn load_key(path: &str) -> Result<PrivateKeyDer<'static>, String> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::{thread, time::Duration};
+    use std::{
+        io::{BufRead, BufReader, Write},
+        net::Shutdown,
+        os::unix::net::UnixStream,
+        thread,
+        time::Duration,
+    };
+
+    use crate::auth::{TicketClaims, sign};
 
     fn tmux_exec(daemon: &Daemon, argv: &[&str]) -> Value {
         daemon
@@ -3466,6 +3525,14 @@ mod tests {
 
     fn strip_display_id<'a>(value: &'a str, prefix: char) -> &'a str {
         value.trim_start_matches(prefix)
+    }
+
+    fn encode_ticket(claims: TicketClaims, secret: &[u8]) -> String {
+        let payload = serde_json::to_vec(&claims).unwrap();
+        let encoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload);
+        let encoded_signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(sign(encoded_payload.as_bytes(), secret));
+        format!("{encoded_payload}.{encoded_signature}")
     }
 
     #[test]
@@ -3749,5 +3816,114 @@ mod tests {
         daemon
             .dispatch_json("session.close", json!({ "session_id": "exit-demo" }))
             .unwrap();
+    }
+
+    #[test]
+    fn generated_session_ids_skip_existing_custom_ids() {
+        let daemon = Daemon::new("test");
+        let custom = daemon
+            .dispatch_json(
+                "terminal.open",
+                json!({
+                    "session_id": "sess-1",
+                    "command": "/bin/cat",
+                    "cols": 80,
+                    "rows": 24,
+                }),
+            )
+            .unwrap();
+        let generated = daemon
+            .dispatch_json(
+                "terminal.open",
+                json!({
+                    "command": "/bin/cat",
+                    "cols": 80,
+                    "rows": 24,
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(custom["session_id"].as_str().unwrap(), "sess-1");
+        assert_eq!(generated["session_id"].as_str().unwrap(), "sess-2");
+
+        daemon
+            .dispatch_json("session.close", json!({ "session_id": "sess-1" }))
+            .unwrap();
+        daemon
+            .dispatch_json("session.close", json!({ "session_id": "sess-2" }))
+            .unwrap();
+    }
+
+    #[test]
+    fn bare_tmux_pane_targets_do_not_escape_the_active_window() {
+        let daemon = Daemon::new("test");
+        tmux_exec(&daemon, &["new-session", "-s", "alpha", "/bin/cat"]);
+        tmux_exec(&daemon, &["new-session", "-s", "beta", "/bin/cat"]);
+        tmux_exec(&daemon, &["split-window", "-t", "beta:0", "/bin/cat"]);
+
+        let err = match daemon.tmux_resolve_pane(Some("1")) {
+            Ok(_) => panic!("bare pane index should stay scoped to the active window"),
+            Err(err) => err,
+        };
+        assert_eq!(err, "pane not found: 1");
+
+        daemon
+            .dispatch_json("session.close", json!({ "session_id": "alpha" }))
+            .unwrap();
+        daemon
+            .dispatch_json("session.close", json!({ "session_id": "beta" }))
+            .unwrap();
+    }
+
+    #[test]
+    fn direct_tls_keeps_buffered_frames_after_handshake() {
+        let daemon = Daemon::new("test");
+        let (client, server) = UnixStream::pair().unwrap();
+        let server_thread = thread::spawn(move || {
+            daemon.serve_tls_stream(server, "srv", b"secret").unwrap();
+        });
+
+        let claims = TicketClaims {
+            server_id: "srv".to_string(),
+            team_id: String::new(),
+            session_id: String::new(),
+            attachment_id: String::new(),
+            capabilities: vec!["session.open".to_string()],
+            exp: unix_now_secs() + 60,
+            nonce: "buffered-handshake".to_string(),
+        };
+        let ticket = encode_ticket(claims, b"secret");
+        let handshake = serde_json::to_vec(&json!({ "ticket": ticket })).unwrap();
+        let request = serde_json::to_vec(&json!({
+            "id": 1,
+            "method": "hello",
+            "params": {}
+        }))
+        .unwrap();
+
+        let mut client = client;
+        client.write_all(&handshake).unwrap();
+        client.write_all(b"\n").unwrap();
+        client.write_all(&request).unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+        client.shutdown(Shutdown::Write).unwrap();
+
+        let mut reader = BufReader::new(client);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let handshake_response: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(handshake_response["ok"].as_bool(), Some(true));
+
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let request_response: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(request_response["ok"].as_bool(), Some(true));
+        assert_eq!(
+            request_response["result"]["name"].as_str(),
+            Some("cmuxd-remote")
+        );
+
+        server_thread.join().unwrap();
     }
 }
