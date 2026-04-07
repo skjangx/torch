@@ -3970,15 +3970,28 @@ class TerminalController {
                 return
             }
 
-            workspace.reconnectRemoteConnection()
+            let reconnectOutcome = workspace.reconnectRemoteConnection()
             let windowId = v2ResolveWindowId(tabManager: owner)
-            result = .ok([
+            var payload: [String: Any] = [
                 "window_id": v2OrNull(windowId?.uuidString),
                 "window_ref": v2Ref(kind: .window, uuid: windowId),
                 "workspace_id": workspace.id.uuidString,
                 "workspace_ref": v2Ref(kind: .workspace, uuid: workspace.id),
                 "remote": workspace.remoteStatusPayload(),
-            ])
+            ]
+            if reconnectOutcome.relayRecreated {
+                payload["warning_code"] = "relay_recreated"
+                payload["warning"] = "Remote relay was recreated. Fresh SSH shells are starting; running processes and scrollback from the dead session are not preserved."
+                payload["replaced_surfaces"] = reconnectOutcome.replacedSurfaces.map { replacement in
+                    [
+                        "old_surface_id": replacement.oldSurfaceId.uuidString,
+                        "old_surface_ref": v2Ref(kind: .surface, uuid: replacement.oldSurfaceId),
+                        "new_surface_id": replacement.newSurfaceId.uuidString,
+                        "new_surface_ref": v2Ref(kind: .surface, uuid: replacement.newSurfaceId),
+                    ]
+                }
+            }
+            result = .ok(payload)
         }
 
         return result

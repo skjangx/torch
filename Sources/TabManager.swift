@@ -4265,6 +4265,11 @@ class TabManager: ObservableObject {
         )
 #endif
 
+        if tab.shouldPreserveRemoteTerminalAfterChildExit(surfaceId: surfaceId) {
+            tab.preserveRemoteTerminalAfterChildExit(surfaceId: surfaceId)
+            return
+        }
+
         // Exiting the last SSH surface should demote the workspace back to a local one.
         // Route through Workspace close handling so remote teardown and replacement-panel
         // logic run before TabManager considers removing the workspace itself, including

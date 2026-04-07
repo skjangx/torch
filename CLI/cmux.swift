@@ -1718,6 +1718,13 @@ struct CMUXCLI {
             return
         }
 
+        if command == "relay" {
+            try runRelayCommand(commandArgs: commandArgs, jsonOutput: jsonOutput)
+            return
+        }
+
+        _ = try? sweepLocalRelayState()
+
         // If the argument looks like a path (not a known command), open a workspace there.
         if looksLikePath(command) {
             try openPath(command, socketPath: resolvedSocketPath)
@@ -2031,6 +2038,8 @@ struct CMUXCLI {
 
         case "ssh":
             try runSSH(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
+        case "relay":
+            try runRelayCommand(commandArgs: commandArgs, jsonOutput: jsonOutput)
         case "ssh-session-end":
             try runSSHSessionEnd(commandArgs: commandArgs, client: client)
 
@@ -3996,6 +4005,183 @@ struct CMUXCLI {
             throw CLIError(message: "failed to generate SSH relay credential")
         }
         return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private struct RelayCleanupSummary {
+        let removedSessionDirs: Int
+        let removedPortArtifacts: Int
+
+        var payload: [String: Any] {
+            [
+                "removed_session_dirs": removedSessionDirs,
+                "removed_port_artifacts": removedPortArtifacts,
+            ]
+        }
+    }
+
+    private func runRelayCommand(commandArgs: [String], jsonOutput: Bool) throws {
+        if commandArgs.isEmpty
+            || commandArgs.first == "--help"
+            || commandArgs.first == "-h" {
+            print(
+                subcommandUsage("relay")
+                    ?? """
+                    Usage: cmux relay cleanup
+                    """
+            )
+            return
+        }
+
+        guard let subcommand = commandArgs.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !subcommand.isEmpty else {
+            throw CLIError(message: "Usage: cmux relay cleanup")
+        }
+
+        switch subcommand {
+        case "cleanup":
+            guard commandArgs.count == 1 else {
+                throw CLIError(message: "relay cleanup does not accept additional arguments")
+            }
+            let summary = try sweepLocalRelayState()
+            if jsonOutput {
+                print(jsonString(summary.payload))
+            } else {
+                print(
+                    "OK removed_session_dirs=\(summary.removedSessionDirs) " +
+                    "removed_port_artifacts=\(summary.removedPortArtifacts)"
+                )
+            }
+        default:
+            throw CLIError(message: "Unknown relay subcommand '\(subcommand)'")
+        }
+    }
+
+    @discardableResult
+    private func sweepLocalRelayState() throws -> RelayCleanupSummary {
+        let relayRootURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cmux", isDirectory: true)
+            .appendingPathComponent("relay", isDirectory: true)
+
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: relayRootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return RelayCleanupSummary(removedSessionDirs: 0, removedPortArtifacts: 0)
+        }
+
+        var removedSessionDirs = 0
+        var removedPortArtifacts = 0
+        var portArtifacts: [Int: [URL]] = [:]
+
+        for entryURL in entries {
+            let entryName = entryURL.lastPathComponent
+            let isDirectory = (try? entryURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDirectory {
+                let pidURL = entryURL.appendingPathComponent("pid", isDirectory: false)
+                if FileManager.default.fileExists(atPath: pidURL.path),
+                   let pidData = try? Data(contentsOf: pidURL),
+                   let pidText = String(data: pidData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   let pid = Int32(pidText),
+                   pid > 0,
+                   !isProcessAlive(pid: pid) {
+                    try? FileManager.default.removeItem(at: entryURL)
+                    removedSessionDirs += 1
+                }
+                continue
+            }
+
+            if let port = relayArtifactPort(from: entryName) {
+                portArtifacts[port, default: []].append(entryURL)
+            }
+        }
+
+        for (port, artifactURLs) in portArtifacts where !isLoopbackPortReachable(port: port) {
+            for artifactURL in artifactURLs {
+                try? FileManager.default.removeItem(at: artifactURL)
+                removedPortArtifacts += 1
+            }
+        }
+
+        return RelayCleanupSummary(
+            removedSessionDirs: removedSessionDirs,
+            removedPortArtifacts: removedPortArtifacts
+        )
+    }
+
+    private func isProcessAlive(pid: Int32) -> Bool {
+        if pid <= 0 {
+            return false
+        }
+        if Darwin.kill(pid, 0) == 0 {
+            return true
+        }
+        return errno == EPERM
+    }
+
+    private func relayArtifactPort(from filename: String) -> Int? {
+        let suffixes = [
+            ".auth",
+            ".daemon_path",
+            ".tty",
+            ".shell",
+            ".bootstrap.sh",
+        ]
+        for suffix in suffixes where filename.hasSuffix(suffix) {
+            let prefix = String(filename.dropLast(suffix.count))
+            if let port = Int(prefix), (1...65535).contains(port) {
+                return port
+            }
+        }
+        return nil
+    }
+
+    private func isLoopbackPortReachable(port: Int) -> Bool {
+        guard (1...65535).contains(port) else { return false }
+
+        let socketFD = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketFD >= 0 else { return false }
+        defer { Darwin.close(socketFD) }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(UInt16(port).bigEndian)
+        let parsedAddress = withUnsafeMutablePointer(to: &address.sin_addr) { pointer in
+            "127.0.0.1".withCString { hostPointer in
+                inet_pton(AF_INET, hostPointer, pointer)
+            }
+        }
+        guard parsedAddress == 1 else { return false }
+
+        let previousFlags = fcntl(socketFD, F_GETFL, 0)
+        if previousFlags >= 0 {
+            _ = fcntl(socketFD, F_SETFL, previousFlags | O_NONBLOCK)
+        }
+
+        let connectResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.connect(socketFD, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.stride))
+            }
+        }
+        if connectResult == 0 {
+            return true
+        }
+        guard errno == EINPROGRESS else {
+            return false
+        }
+
+        var pollFD = pollfd(fd: socketFD, events: Int16(POLLOUT), revents: 0)
+        let pollResult = Darwin.poll(&pollFD, 1, 150)
+        guard pollResult > 0 else { return false }
+
+        var socketError: Int32 = 0
+        var socketErrorLength = socklen_t(MemoryLayout<Int32>.size)
+        let optionResult = withUnsafeMutablePointer(to: &socketError) { pointer in
+            getsockopt(socketFD, SOL_SOCKET, SO_ERROR, pointer, &socketErrorLength)
+        }
+        return optionResult == 0 && socketError == 0
     }
 
     private func runSSH(
@@ -6751,6 +6937,12 @@ struct CMUXCLI {
             Coding agents:
               Double check with the end user before sending anything. Review the message and attachments for secrets,
               private code, credentials, tokens, and other sensitive information first.
+            """
+        case "relay":
+            return """
+            Usage: cmux relay cleanup
+
+            Remove stale relay pidfiles and port metadata under ~/.cmux/relay.
             """
         case "themes":
             return """
@@ -14344,6 +14536,7 @@ struct CMUXCLI {
           list-workspaces
           new-workspace [--name <title>] [--description <text>] [--cwd <path>] [--command <text>]
           ssh <destination> [--name <title>] [--port <n>] [--identity <path>] [--ssh-option <opt>] [--no-focus] [-- <remote-command-args>]
+          relay cleanup
           remote-daemon-status [--os <darwin|linux>] [--arch <arm64|amd64>]
           new-split <left|right|up|down> [--workspace <id|ref>] [--surface <id|ref>] [--panel <id|ref>]
           list-panes [--workspace <id|ref>]

@@ -1079,7 +1079,17 @@ enum WorkspaceRemoteSSHBatchCommandBuilder {
         configuration: WorkspaceRemoteConfiguration,
         remotePath: String
     ) -> [String] {
-        let script = "exec \(shellSingleQuoted(remotePath)) serve --stdio"
+        var scriptComponents = [
+            "exec \(shellSingleQuoted(remotePath))",
+            "serve",
+            "--stdio",
+        ]
+        if let sessionID = configuration.relaySessionID {
+            scriptComponents.append("--session-id \(shellSingleQuoted(sessionID))")
+            scriptComponents.append("--log \"$HOME/.cmux/relay/\(sessionID)/relay.log\"")
+        }
+        scriptComponents.append("--invocation-reason \(shellSingleQuoted("workspace.remote.connect"))")
+        let script = scriptComponents.joined(separator: " ")
         let command = "sh -c \(shellSingleQuoted(script))"
         return ["-T"]
             + batchArguments(configuration: configuration)
@@ -4006,6 +4016,63 @@ final class WorkspaceRemoteSessionController {
         }
     }
 
+    func probeRelayLiveness(timeout: TimeInterval = 2.5) -> Bool? {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return probeRelayLivenessLocked()
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Bool?
+        queue.async { [weak self] in
+            defer { semaphore.signal() }
+            result = self?.probeRelayLivenessLocked()
+        }
+        guard semaphore.wait(timeout: .now() + timeout) == .success else {
+            return nil
+        }
+        return result
+    }
+
+    private func probeRelayLivenessLocked() -> Bool? {
+        guard let relaySessionID = configuration.relaySessionID else {
+            return nil
+        }
+
+        let script = """
+        cmux_relay_pid_file="$HOME/.cmux/relay/\(relaySessionID)/pid"
+        if [ ! -r "$cmux_relay_pid_file" ]; then
+          printf 'missing'
+          exit 0
+        fi
+        cmux_relay_pid="$(tr -d '\\r\\n' < "$cmux_relay_pid_file")"
+        if [ -n "$cmux_relay_pid" ] && kill -0 "$cmux_relay_pid" 2>/dev/null; then
+          printf 'alive'
+        else
+          printf 'dead'
+        fi
+        """
+        let command = "sh -c \(Self.shellSingleQuoted(script))"
+
+        do {
+            let result = try sshExec(
+                arguments: sshCommonArguments(batchMode: true) + [configuration.destination, command],
+                timeout: 3
+            )
+            let state = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch state {
+            case "alive":
+                return true
+            case "dead", "missing":
+                return false
+            default:
+                return nil
+            }
+        } catch {
+            debugLog("remote.relay.probe.failed error=\(error.localizedDescription) \(debugConfigSummary())")
+            return nil
+        }
+    }
+
     private func reverseRelayArguments(relayPort: Int, localRelayPort: Int) -> [String] {
         // Fallback standalone transport when dynamic forwarding through an existing
         // control master is unavailable.
@@ -5938,6 +6005,16 @@ enum WorkspaceRemoteDaemonState: String {
     case error
 }
 
+struct WorkspaceRemoteReconnectOutcome {
+    struct SurfaceReplacement {
+        let oldSurfaceId: UUID
+        let newSurfaceId: UUID
+    }
+
+    let relayRecreated: Bool
+    let replacedSurfaces: [SurfaceReplacement]
+}
+
 struct WorkspaceRemoteDaemonStatus: Equatable {
     var state: WorkspaceRemoteDaemonState = .unavailable
     var detail: String?
@@ -6000,6 +6077,16 @@ struct WorkspaceRemoteConfiguration: Equatable {
     var displayTarget: String {
         guard let port else { return destination }
         return "\(destination):\(port)"
+    }
+
+    var relaySessionID: String? {
+        let trimmed = relayID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var relayLogPath: String? {
+        guard let relaySessionID else { return nil }
+        return "$HOME/.cmux/relay/\(relaySessionID)/relay.log"
     }
 
     var proxyBrokerTransportKey: String {
@@ -8147,9 +8234,202 @@ final class Workspace: Identifiable, ObservableObject {
         controller.start()
     }
 
-    func reconnectRemoteConnection() {
-        guard let configuration = remoteConfiguration else { return }
+    @discardableResult
+    func reconnectRemoteConnection() -> WorkspaceRemoteReconnectOutcome {
+        guard let configuration = remoteConfiguration else {
+            return WorkspaceRemoteReconnectOutcome(relayRecreated: false, replacedSurfaces: [])
+        }
+
+        let pendingExitedSurfaceIds = pendingRemoteTerminalChildExitSurfaceIds
+        let relayProbe = remoteSessionController?.probeRelayLiveness()
+        let replacedSurfaces = replaceExitedRemoteTerminalPanelsForReconnect()
+        let relayRecreated =
+            !pendingExitedSurfaceIds.isEmpty
+            || relayProbe == false
+            || remoteConnectionState != .connected
+            || remoteDaemonStatus.state == .error
+            || remoteSessionController == nil
+
+        // Reconnect only recreates SSH shells on fresh terminal surfaces. Any PTYs,
+        // running processes, and scrollback from the dead SSH session are already gone.
         configureRemoteConnection(configuration, autoConnect: true)
+        if relayRecreated, let target = remoteDisplayTarget {
+            appendSidebarLog(
+                message: "Remote relay for \(target) was recreated. Fresh SSH shells are starting; process state and scrollback from the dead session are not preserved.",
+                level: .warning,
+                source: "remote"
+            )
+        }
+        return WorkspaceRemoteReconnectOutcome(
+            relayRecreated: relayRecreated,
+            replacedSurfaces: replacedSurfaces
+        )
+    }
+
+    func shouldPreserveRemoteTerminalAfterChildExit(surfaceId: UUID) -> Bool {
+        guard remoteConfiguration != nil, terminalPanel(for: surfaceId) != nil else { return false }
+        if remoteConnectionState != .connected || remoteDaemonStatus.state == .error {
+            return true
+        }
+        guard pendingRemoteTerminalChildExitSurfaceIds.contains(surfaceId) else {
+            return false
+        }
+        if let relayAlive = remoteSessionController?.probeRelayLiveness(timeout: 0.75) {
+            return !relayAlive
+        }
+        return false
+    }
+
+    func preserveRemoteTerminalAfterChildExit(surfaceId: UUID) {
+        guard remoteConfiguration != nil, terminalPanel(for: surfaceId) != nil else { return }
+        pendingRemoteTerminalChildExitSurfaceIds.insert(surfaceId)
+        untrackRemoteTerminalSurface(surfaceId)
+        applyRemoteConnectionStateUpdate(
+            .error,
+            detail: "Remote SSH session exited. Reconnect creates a fresh relay and shell; running processes and scrollback from the dead session are not preserved.",
+            target: remoteDisplayTarget ?? "remote host"
+        )
+    }
+
+    private func replaceExitedRemoteTerminalPanelsForReconnect() -> [WorkspaceRemoteReconnectOutcome.SurfaceReplacement] {
+        guard let remoteTerminalStartupCommand = remoteTerminalStartupCommand(),
+              !pendingRemoteTerminalChildExitSurfaceIds.isEmpty else {
+            return []
+        }
+
+        let orderedPendingSurfaceIds = sidebarOrderedPanelIds().filter {
+            pendingRemoteTerminalChildExitSurfaceIds.contains($0) && terminalPanel(for: $0) != nil
+        }
+        guard !orderedPendingSurfaceIds.isEmpty else {
+            pendingRemoteTerminalChildExitSurfaceIds.removeAll(keepingCapacity: false)
+            return []
+        }
+
+        let focusedBeforeReconnect = focusedPanelId
+        var focusReplacementSurfaceId: UUID?
+        var replacements: [WorkspaceRemoteReconnectOutcome.SurfaceReplacement] = []
+
+        for oldSurfaceId in orderedPendingSurfaceIds {
+            guard let oldPanel = terminalPanel(for: oldSurfaceId),
+                  let tabId = surfaceIdFromPanelId(oldSurfaceId) else {
+                pendingRemoteTerminalChildExitSurfaceIds.remove(oldSurfaceId)
+                continue
+            }
+
+            let paneId = bonsplitController.allPaneIds.first {
+                bonsplitController.tabs(inPane: $0).contains(where: { $0.id == tabId })
+            }
+            let inheritedConfig = inheritedTerminalConfig(
+                preferredPanelId: oldSurfaceId,
+                inPane: paneId
+            )
+            let replacementContext: ghostty_surface_context_e = {
+                if bonsplitController.allPaneIds.count <= 1 {
+                    return GHOSTTY_SURFACE_CONTEXT_TAB
+                }
+                return GHOSTTY_SURFACE_CONTEXT_SPLIT
+            }()
+
+            let replacementPanel = TerminalPanel(
+                workspaceId: id,
+                context: replacementContext,
+                configTemplate: inheritedConfig,
+                workingDirectory: remoteReconnectWorkingDirectory(for: oldSurfaceId),
+                portOrdinal: portOrdinal,
+                initialCommand: remoteTerminalStartupCommand
+            )
+            configureTerminalPanel(replacementPanel)
+            panels[replacementPanel.id] = replacementPanel
+            seedTerminalInheritanceFontPoints(panelId: replacementPanel.id, configTemplate: inheritedConfig)
+            panelTitles[replacementPanel.id] = panelTitles[oldSurfaceId] ?? replacementPanel.displayTitle
+            if let customTitle = panelCustomTitles.removeValue(forKey: oldSurfaceId) {
+                panelCustomTitles[replacementPanel.id] = customTitle
+            }
+            if pinnedPanelIds.remove(oldSurfaceId) != nil {
+                pinnedPanelIds.insert(replacementPanel.id)
+            }
+            if manualUnreadPanelIds.remove(oldSurfaceId) != nil {
+                manualUnreadPanelIds.insert(replacementPanel.id)
+            }
+            if let markedAt = manualUnreadMarkedAt.removeValue(forKey: oldSurfaceId) {
+                manualUnreadMarkedAt[replacementPanel.id] = markedAt
+            }
+
+            oldPanel.close()
+            panels.removeValue(forKey: oldSurfaceId)
+            panelDirectories.removeValue(forKey: oldSurfaceId)
+            panelGitBranches.removeValue(forKey: oldSurfaceId)
+            panelPullRequests.removeValue(forKey: oldSurfaceId)
+            panelTitles.removeValue(forKey: oldSurfaceId)
+            panelSubscriptions.removeValue(forKey: oldSurfaceId)
+            panelShellActivityStates.removeValue(forKey: oldSurfaceId)
+            surfaceListeningPorts.removeValue(forKey: oldSurfaceId)
+            surfaceTTYNames.removeValue(forKey: oldSurfaceId)
+            restoredTerminalScrollbackByPanelId.removeValue(forKey: oldSurfaceId)
+            terminalInheritanceFontPointsByPanelId.removeValue(forKey: oldSurfaceId)
+            remoteDetectedSurfaceIds.remove(oldSurfaceId)
+            PortScanner.shared.unregisterPanel(workspaceId: id, panelId: oldSurfaceId)
+            if lastTerminalConfigInheritancePanelId == oldSurfaceId {
+                lastTerminalConfigInheritancePanelId = replacementPanel.id
+            }
+            AppDelegate.shared?.notificationStore?.clearNotifications(forTabId: id, surfaceId: oldSurfaceId)
+
+            trackRemoteTerminalSurface(replacementPanel.id)
+            surfaceIdToPanelId[tabId] = replacementPanel.id
+            pendingRemoteTerminalChildExitSurfaceIds.remove(oldSurfaceId)
+
+            let replacementTitle = resolvedPanelTitle(
+                panelId: replacementPanel.id,
+                fallback: panelTitles[replacementPanel.id] ?? replacementPanel.displayTitle
+            )
+            bonsplitController.updateTab(
+                tabId,
+                title: replacementTitle,
+                icon: .some(replacementPanel.displayIcon),
+                iconImageData: .some(nil),
+                kind: .some(SurfaceKind.terminal),
+                hasCustomTitle: panelCustomTitles[replacementPanel.id] != nil,
+                isDirty: replacementPanel.isDirty,
+                showsNotificationBadge: manualUnreadPanelIds.contains(replacementPanel.id),
+                isLoading: false,
+                isPinned: pinnedPanelIds.contains(replacementPanel.id)
+            )
+
+            if focusedBeforeReconnect == oldSurfaceId {
+                focusReplacementSurfaceId = replacementPanel.id
+            }
+            replacements.append(
+                WorkspaceRemoteReconnectOutcome.SurfaceReplacement(
+                    oldSurfaceId: oldSurfaceId,
+                    newSurfaceId: replacementPanel.id
+                )
+            )
+        }
+
+        syncRemotePortScanTTYs()
+        recomputeListeningPorts()
+        scheduleTerminalGeometryReconcile()
+        if let focusReplacementSurfaceId {
+            focusPanel(focusReplacementSurfaceId)
+        } else {
+            scheduleFocusReconcile()
+        }
+        return replacements
+    }
+
+    private func remoteReconnectWorkingDirectory(for panelId: UUID) -> String? {
+        if let panelDirectory = panelDirectories[panelId]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !panelDirectory.isEmpty {
+            return panelDirectory
+        }
+        if let requestedWorkingDirectory = terminalPanel(for: panelId)?
+            .requestedWorkingDirectory?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !requestedWorkingDirectory.isEmpty {
+            return requestedWorkingDirectory
+        }
+        let workspaceDirectory = currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return workspaceDirectory.isEmpty ? nil : workspaceDirectory
     }
 
     private static func normalizedForegroundAuthToken(_ token: String?) -> String? {
@@ -8258,6 +8538,7 @@ final class Workspace: Identifiable, ObservableObject {
 
     private func maybeDemoteRemoteWorkspaceAfterSSHSessionEnded() {
         guard activeRemoteTerminalSurfaceIds.isEmpty, remoteConfiguration != nil else { return }
+        guard pendingRemoteTerminalChildExitSurfaceIds.isEmpty else { return }
         let hasBrowserPanels = panels.values.contains { $0 is BrowserPanel }
         if !hasBrowserPanels {
             if remoteConnectionState == .error || remoteDaemonStatus.state == .error || remoteConnectionState == .connecting {
