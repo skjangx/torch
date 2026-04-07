@@ -1,5 +1,6 @@
 import AppKit
-import ApplicationServices
+import Bonsplit
+import Carbon
 import SwiftUI
 
 /// Stores customizable keyboard shortcuts (definitions + persistence).
@@ -416,10 +417,6 @@ enum SystemWideHotkeySettings {
     static let defaultEnabled = false
     static let defaultShortcut = StoredShortcut(key: ".", command: true, shift: false, option: false, control: false)
 
-    private static let accessibilitySettingsURL = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-    )
-
     static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
     }
@@ -453,17 +450,6 @@ enum SystemWideHotkeySettings {
         !shortcut.hasChord && shortcut.hasPrimaryModifier
     }
 
-    static func isAccessibilityTrusted(prompt: Bool = false) -> Bool {
-        guard prompt else { return AXIsProcessTrusted() }
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
-    }
-
-    static func openAccessibilitySettings() {
-        guard let accessibilitySettingsURL else { return }
-        NSWorkspace.shared.open(accessibilitySettingsURL)
-    }
-
     static func reset(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: enabledKey)
         defaults.removeObject(forKey: shortcutKey)
@@ -472,150 +458,163 @@ enum SystemWideHotkeySettings {
 
 final class SystemWideHotkeyController {
     static let shared = SystemWideHotkeyController()
+    private static let hotKeySignature: OSType = 0x434D484B // "CMHK"
+    private static let hotKeyID: UInt32 = 1
 
-    private var eventTap: CFMachPort?
-    private var eventTapRunLoopSource: CFRunLoopSource?
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandler: EventHandlerRef?
     private var defaultsObserver: NSObjectProtocol?
-    private var applicationDidBecomeActiveObserver: NSObjectProtocol?
     private var isShortcutRecordingActive = false
     private var isEnabled = SystemWideHotkeySettings.defaultEnabled
     private var shortcut = SystemWideHotkeySettings.defaultShortcut
+    private var registeredShortcut: StoredShortcut?
 
     private init() {}
 
     func start() {
         guard defaultsObserver == nil else { return }
 
+        installHotKeyHandlerIfNeeded()
+
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refreshRegistration(promptIfNeeded: false)
+            self?.refreshRegistration()
         }
 
-        applicationDidBecomeActiveObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshRegistration(promptIfNeeded: false)
-        }
-
-        refreshRegistration(promptIfNeeded: false)
-    }
-
-    @discardableResult
-    func requestAccessibilityAccess() -> Bool {
-        let trusted = SystemWideHotkeySettings.isAccessibilityTrusted(prompt: true)
-        refreshRegistration(promptIfNeeded: false)
-        return trusted
+        refreshRegistration()
     }
 
     func setShortcutRecordingActive(_ isActive: Bool) {
+        guard isShortcutRecordingActive != isActive else { return }
         isShortcutRecordingActive = isActive
+        refreshRegistration()
     }
 
-    private func refreshRegistration(promptIfNeeded: Bool) {
+    private func refreshRegistration() {
         isEnabled = SystemWideHotkeySettings.isEnabled()
         shortcut = SystemWideHotkeySettings.shortcut()
 
-        guard isEnabled else {
-            uninstallEventTap()
+        guard isEnabled, !isShortcutRecordingActive else {
+            unregisterHotKey()
             return
         }
 
-        guard SystemWideHotkeySettings.isAccessibilityTrusted(prompt: promptIfNeeded) else {
-            uninstallEventTap()
+        guard let registration = shortcut.carbonHotKeyRegistration else {
+            unregisterHotKey()
             return
         }
 
-        installEventTapIfNeeded()
+        if registeredShortcut == shortcut, hotKeyRef != nil {
+            return
+        }
+
+        unregisterHotKey()
+        installHotKeyHandlerIfNeeded()
+
+        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.hotKeyID)
+        var hotKeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            registration.keyCode,
+            registration.modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        guard status == noErr, let hotKeyRef else {
+#if DEBUG
+            dlog(
+                "globalHotkey.register failed shortcut=\(shortcut.displayString) " +
+                "keyCode=\(registration.keyCode) modifiers=\(registration.modifiers) status=\(status)"
+            )
+#endif
+            return
+        }
+
+        self.hotKeyRef = hotKeyRef
+        registeredShortcut = shortcut
+
+#if DEBUG
+        dlog(
+            "globalHotkey.register success shortcut=\(shortcut.displayString) " +
+            "keyCode=\(registration.keyCode) modifiers=\(registration.modifiers)"
+        )
+#endif
     }
 
-    private func installEventTapIfNeeded() {
-        guard eventTap == nil else { return }
+    private func installHotKeyHandlerIfNeeded() {
+        guard hotKeyHandler == nil else { return }
 
-        let eventMask = CGEventMask(1) << CGEventType.keyDown.rawValue
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
         let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
 
-        guard let eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: Self.eventTapCallback,
-            userInfo: userInfo
-        ) else {
-            return
-        }
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            Self.hotKeyEventHandler,
+            1,
+            &eventType,
+            userInfo,
+            &hotKeyHandler
+        )
 
-        guard let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0) else {
-            CFMachPortInvalidate(eventTap)
-            return
+#if DEBUG
+        if status != noErr {
+            dlog("globalHotkey.handlerInstall failed status=\(status)")
         }
-
-        self.eventTap = eventTap
-        eventTapRunLoopSource = runLoopSource
-        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+#endif
     }
 
-    private func uninstallEventTap() {
-        if let runLoopSource = eventTapRunLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-            eventTapRunLoopSource = nil
+    private func unregisterHotKey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
         }
-
-        if let eventTap = eventTap {
-            CFMachPortInvalidate(eventTap)
-            self.eventTap = nil
-        }
+        registeredShortcut = nil
     }
 
-    private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
-        guard let userInfo else { return Unmanaged.passUnretained(event) }
+    private static let hotKeyEventHandler: EventHandlerUPP = { _, event, userInfo in
+        guard let userInfo else { return OSStatus(eventNotHandledErr) }
         let controller = Unmanaged<SystemWideHotkeyController>
             .fromOpaque(userInfo)
             .takeUnretainedValue()
-        return controller.handleEventTap(type: type, event: event)
+        return controller.handleHotKeyEvent(event)
     }
 
-    private func handleEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
-        }
+    private func handleHotKeyEvent(_ event: EventRef?) -> OSStatus {
+        guard let event else { return OSStatus(eventNotHandledErr) }
 
-        guard type == .keyDown, isEnabled, !isShortcutRecordingActive else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard matchesShortcut(event) else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-            DispatchQueue.main.async { [weak self] in
-                self?.toggleApplicationVisibility()
-            }
-        }
-
-        return nil
-    }
-
-    private func matchesShortcut(_ event: CGEvent) -> Bool {
-        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        let eventModifiers = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-        let eventCharacter = NSEvent(cgEvent: event)?.charactersIgnoringModifiers
-
-        return shortcut.matches(
-            keyCode: keyCode,
-            modifierFlags: eventModifiers,
-            eventCharacter: eventCharacter
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
         )
+
+        guard status == noErr,
+              hotKeyID.signature == Self.hotKeySignature,
+              hotKeyID.id == Self.hotKeyID else {
+            return OSStatus(eventNotHandledErr)
+        }
+
+#if DEBUG
+        dlog("globalHotkey.fire shortcut=\(shortcut.displayString) active=\(NSApp.isActive ? 1 : 0)")
+#endif
+
+        DispatchQueue.main.async { [weak self] in
+            self?.toggleApplicationVisibility()
+        }
+        return OSStatus(noErr)
     }
 
     private func toggleApplicationVisibility() {
@@ -728,8 +727,8 @@ struct ShortcutStroke: Equatable {
         }
     }
 
-    var eventModifiers: EventModifiers {
-        var modifiers: EventModifiers = []
+    var eventModifiers: SwiftUI.EventModifiers {
+        var modifiers: SwiftUI.EventModifiers = []
         if command {
             modifiers.insert(.command)
         }
@@ -1069,6 +1068,20 @@ struct ShortcutStroke: Equatable {
             return nil
         }
     }
+
+    var carbonModifiers: UInt32 {
+        var modifiers: UInt32 = 0
+        if command { modifiers |= UInt32(cmdKey) }
+        if shift { modifiers |= UInt32(shiftKey) }
+        if option { modifiers |= UInt32(optionKey) }
+        if control { modifiers |= UInt32(controlKey) }
+        return modifiers
+    }
+
+    var carbonHotKeyRegistration: (keyCode: UInt32, modifiers: UInt32)? {
+        guard let keyCode = Self.keyCodeForShortcutKey(key.lowercased()) else { return nil }
+        return (UInt32(keyCode), carbonModifiers)
+    }
 }
 
 /// A keyboard shortcut that can be stored in UserDefaults
@@ -1219,7 +1232,7 @@ struct StoredShortcut: Codable, Equatable {
         return firstStroke.keyEquivalent
     }
 
-    var eventModifiers: EventModifiers {
+    var eventModifiers: SwiftUI.EventModifiers {
         firstStroke.eventModifiers
     }
 
@@ -1254,6 +1267,11 @@ struct StoredShortcut: Codable, Equatable {
             eventCharacter: eventCharacter,
             layoutCharacterProvider: layoutCharacterProvider
         )
+    }
+
+    var carbonHotKeyRegistration: (keyCode: UInt32, modifiers: UInt32)? {
+        guard !hasChord else { return nil }
+        return firstStroke.carbonHotKeyRegistration
     }
 }
 

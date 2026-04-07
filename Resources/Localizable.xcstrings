@@ -63638,13 +63638,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use Command, Option, or Control with another key. Accessibility access is required to monitor the hotkey outside cmux."
+            "value": "Use Command, Option, or Control with another key. No extra macOS permission is required."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Command、Option、または Control と別のキーを組み合わせてください。アプリ外でホットキーを監視するにはアクセシビリティアクセスが必要です。"
+            "value": "Command、Option、または Control と別のキーを組み合わせてください。追加の macOS 権限は不要です。"
           }
         }
       }
