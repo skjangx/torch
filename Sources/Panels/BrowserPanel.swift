@@ -1805,7 +1805,7 @@ private extension ASAuthorizationWebBrowserPublicKeyCredentialManager.Authorizat
 }
 
 @MainActor
-private final class BrowserPasskeyAuthorizationManager {
+final class BrowserPasskeyAuthorizationManager {
     static let shared = BrowserPasskeyAuthorizationManager()
 
     private let credentialManager = ASAuthorizationWebBrowserPublicKeyCredentialManager()
