@@ -374,7 +374,7 @@ fn run_pane_actor(
                             })
                             .map_err(|err| err.to_string())
                             .and_then(|_| runtime.terminal.resize(cols.max(2), rows.max(1)))
-                            .map(|_| notify_winch(runtime.child.as_mut()));
+                            .map(|_| notify_winch(runtime.master.as_ref(), runtime.child.as_mut()));
                         let _ = reply.send(result);
                     }
                     Ok(PaneCommand::Capture(include_history, reply)) => {
@@ -427,11 +427,15 @@ fn run_pane_actor(
     let _ = runtime.child.wait();
 }
 
-fn notify_winch(child: &mut dyn Child) {
+fn notify_winch(master: &dyn MasterPty, child: &mut dyn Child) {
     #[cfg(unix)]
-    if let Some(pid) = child.process_id() {
+    if let Some(pgid) = master.process_group_leader() {
         unsafe {
-            let _ = libc::kill(pid as i32, libc::SIGWINCH);
+            let _ = libc::kill(-pgid, libc::SIGWINCH);
+        }
+    } else if let Some(pid) = child.process_id() {
+        unsafe {
+            let _ = libc::kill(pid as libc::pid_t, libc::SIGWINCH);
         }
     }
 }
