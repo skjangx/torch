@@ -36,6 +36,12 @@ should_skip_ghostty_cli_helper_zig_build() {
   return 1
 }
 
+find_apple_development_identity() {
+  security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/.*"\(Apple Development: .*\)"/\1/p' \
+    | head -n 1
+}
+
 write_dev_cli_shim() {
   local target="$1"
   local fallback_bin="$2"
@@ -430,7 +436,13 @@ if [[ -n "$TAG" && "$APP_NAME" != "$SEARCH_APP_NAME" ]]; then
         rm -f "$CMUX_SOCKET"
       fi
     fi
-    /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der --entitlements "$PWD/cmux.entitlements" "$TAG_APP_PATH" >/dev/null 2>&1 || true
+    APPLE_DEVELOPMENT_IDENTITY="$(find_apple_development_identity || true)"
+    if [[ -n "${APPLE_DEVELOPMENT_IDENTITY:-}" ]]; then
+      /usr/bin/codesign --force --sign "$APPLE_DEVELOPMENT_IDENTITY" --timestamp=none --generate-entitlement-der --entitlements "$PWD/cmux.entitlements" "$TAG_APP_PATH" >/dev/null 2>&1 || true
+    else
+      echo "No Apple Development signing identity found; local tagged app will launch without passkey entitlements."
+      /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$TAG_APP_PATH" >/dev/null 2>&1 || true
+    fi
   fi
   APP_PATH="$TAG_APP_PATH"
 fi
