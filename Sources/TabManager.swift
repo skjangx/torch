@@ -1415,6 +1415,8 @@ class TabManager: ObservableObject {
     private nonisolated static let selectedPollInterval: TimeInterval = 10
     private nonisolated static let workspacePullRequestPollTickInterval: TimeInterval = 1
     private nonisolated static let workspacePullRequestRepoCacheLifetime: TimeInterval = 15
+    private nonisolated static let workspacePullRequestRepoPageSize = 100
+    private nonisolated static let workspacePullRequestRepoPageLimit = 2
     private nonisolated static let workspacePullRequestTerminalStateSweepInterval: TimeInterval = 15 * 60
     private nonisolated static let workspacePullRequestPollJitterFraction = 0.10
     private nonisolated static let workspacePullRequestProbeTimeout: TimeInterval = 5.0
@@ -1766,13 +1768,11 @@ class TabManager: ObservableObject {
                     continue
                 }
 
-                guard let candidate = workspacePullRequestCandidate(
+                let candidate = workspacePullRequestCandidate(
                     workspace: workspace,
                     panelId: panelId,
                     branch: branch
-                ) else {
-                    continue
-                }
+                )
                 candidates.append(candidate)
                 requestedKeys.append(key)
                 if let directory = gitProbeDirectory(for: workspace, panelId: panelId) {
@@ -1834,10 +1834,9 @@ class TabManager: ObservableObject {
         workspace: Workspace,
         panelId: UUID,
         branch: String
-    ) -> WorkspacePullRequestCandidate? {
+    ) -> WorkspacePullRequestCandidate {
         let directory = gitProbeDirectory(for: workspace, panelId: panelId)
         let repoSlugs = directory.map(Self.githubRepositorySlugs(directory:)) ?? []
-        guard !repoSlugs.isEmpty else { return nil }
         return WorkspacePullRequestCandidate(
             workspaceId: workspace.id,
             panelId: panelId,
@@ -2945,6 +2944,15 @@ class TabManager: ObservableObject {
         repoResults: [String: WorkspacePullRequestRepoFetchResult]
     ) -> [WorkspacePullRequestRefreshResult] {
         candidates.map { candidate in
+            if candidate.repoSlugs.isEmpty {
+                return WorkspacePullRequestRefreshResult(
+                    workspaceId: candidate.workspaceId,
+                    panelId: candidate.panelId,
+                    resolution: .unsupportedRepository,
+                    usedCachedRepoData: false
+                )
+            }
+
             var preferredMatch: GitHubPullRequestProbeItem?
             var preferredMatchUsedCache = false
             var sawTransientFailure = false
@@ -3012,10 +3020,11 @@ class TabManager: ObservableObject {
     ) async -> WorkspacePullRequestRepoFetchResult {
         let fetchTimestamp = Date()
         var page = 1
+        var fetchedPageCount = 0
         var allPullRequests: [GitHubPullRequestProbeItem] = []
 
-        while true {
-            let endpoint = "repos/\(repoSlug)/pulls?state=all&sort=updated&direction=desc&per_page=100&page=\(page)"
+        while page <= Self.workspacePullRequestRepoPageLimit {
+            let endpoint = "repos/\(repoSlug)/pulls?state=all&sort=updated&direction=desc&per_page=\(Self.workspacePullRequestRepoPageSize)&page=\(page)"
             guard let response = await performWorkspacePullRequestRequest(
                 session: session,
                 endpoint: endpoint,
@@ -3035,8 +3044,9 @@ class TabManager: ObservableObject {
                 return .transientFailure
             }
 
+            fetchedPageCount += 1
             allPullRequests.append(contentsOf: pullRequests.map(Self.workspacePullRequestProbeItem))
-            if pullRequests.count < 100 {
+            if pullRequests.count < Self.workspacePullRequestRepoPageSize {
                 break
             }
             page += 1
@@ -3048,7 +3058,7 @@ class TabManager: ObservableObject {
         )
 #if DEBUG
         dlog(
-            "workspace.prRefresh.repo.success repo=\(repoSlug) pages=\(page) " +
+            "workspace.prRefresh.repo.success repo=\(repoSlug) pages=\(fetchedPageCount) " +
             "branches=\(cacheEntry.pullRequestsByBranch.count)"
         )
 #endif
