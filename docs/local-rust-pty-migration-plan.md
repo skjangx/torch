@@ -7,7 +7,7 @@ This plan replaces the current local macOS child-process adapter with direct Swi
 Use two Unix sockets.
 
 - App socket: Swift UI/control plane
-- Rust daemon socket: terminal and tmux/amux/PTTY data plane
+- Rust daemon socket: terminal and tmux/amux/PTY data plane
 
 This is already the direction of the codebase:
 
@@ -84,6 +84,9 @@ This work is not done unless every gate below is true at the same time.
 5. The old local adapter code is deleted after cutover, not left behind as a silent fallback.
 6. Tagged macOS dogfood works for new workspace, split, restore, resize, type, close, EOF, and exit.
 7. Automated tests cover the direct path and run in CI.
+8. A tmux-ground-truth comparison suite exists for the agreed common tmux subset and passes against both real `tmux` and our Rust backend.
+9. A TUI and resize suite exists and passes for the direct Rust PTY path, including `cmux pty`.
+10. CI runs the tmux-ground-truth and TUI/resize suites and blocks handoff if either fails.
 
 If any one of those is false, this migration is incomplete.
 
@@ -97,6 +100,10 @@ These are the lazy versions of the migration and should be rejected:
 - proving only `Cmd+N` while splits, restore, or CLI flows still use the old path
 - relying on manual spot checks without CI coverage for the new path
 - keeping a hidden emergency fallback to exec-mode local startup for normal macOS terminals
+- claiming tmux parity from eyeballing a terminal instead of from side-by-side assertions against real `tmux`
+- testing only line-oriented shell commands while skipping fullscreen TUIs, alternate screen, and resize behavior
+- comparing one happy-path pane while skipping window navigation, buffers, `wait-for`, `pipe-pane`, and respawn or kill flows
+- adding parity tests that do not actually run in CI
 
 ## Implementation plan
 
@@ -248,6 +255,157 @@ Done means:
 
 - process tree inspection during local workspace creation shows no `cmuxd-remote amux new ...` child terminal bootstrap
 
+## Verification plan
+
+This migration is not done because one or two commands work. It is done when the direct Rust path survives the same command and TUI workloads that people actually use, and when those checks run automatically.
+
+### A. Real tmux as the comparison oracle
+
+For the common tmux subset, real `tmux` should be treated as close to ground truth.
+
+The plan is:
+
+1. build one parity harness that can drive the same scenario against:
+   - real `tmux`
+   - our Rust backend through `cmuxd-remote tmux exec`
+2. normalize only volatile fields:
+   - UUIDs
+   - generated pane or window ids
+   - timestamps
+   - socket paths
+   - host-specific cwd prefixes where needed
+3. compare the rest directly:
+   - command success or failure
+   - pane and window topology
+   - selected pane and window
+   - captured terminal text
+   - buffer contents
+   - wait semantics
+   - resize-visible state
+
+The suite must fail loudly on behavior drift. It should not silently accept major differences because normalization was too broad.
+
+### B. Common tmux command matrix
+
+These command families need explicit parity coverage against real `tmux`:
+
+- session and window lifecycle:
+  - `new-session`
+  - `has-session`
+  - `new-window`
+  - `kill-window`
+  - `rename-window`
+  - `last-window`
+  - `next-window`
+  - `previous-window`
+- pane lifecycle and navigation:
+  - `split-window`
+  - `select-window`
+  - `select-pane`
+  - `last-pane`
+  - `resize-pane`
+  - `kill-pane`
+  - `respawn-pane`
+- terminal I/O and capture:
+  - `send-keys`
+  - `capture-pane`
+  - `display-message`
+  - `pipe-pane`
+- discovery:
+  - `list-windows`
+  - `list-panes`
+  - `find-window`
+- synchronization and clipboard-like behavior:
+  - `wait-for`
+  - `set-buffer`
+  - `show-buffer`
+  - `save-buffer`
+  - `list-buffers`
+  - `paste-buffer`
+
+For each command family, tests should assert both:
+
+- the immediate command result
+- the resulting session state after the command
+
+### C. TUI matrix
+
+The direct Rust PTY path must be exercised with interactive programs, not just shell prompts.
+
+At minimum, the suite must cover:
+
+- shell prompt baseline:
+  - prompt appears
+  - commands echo and render correctly
+  - scrollback capture remains sane
+- fullscreen or alternate-screen behavior:
+  - a real TUI if available in CI, or a repo-owned fixture TUI if not
+  - enter alternate screen
+  - render updates
+  - exit alternate screen cleanly
+- editor or pager behavior:
+  - `vim -Nu NONE` or equivalent if available
+  - otherwise a repo-owned minimal fullscreen editor fixture
+- long-running output:
+  - repeated writes
+  - capture after output growth
+  - no truncation or stuck offset handling
+- `cmux pty` attach path:
+  - attach to an existing session
+  - observe prior output
+  - write input through the CLI
+  - detach cleanly
+
+The plan should prefer pinned fixture TUIs in the repo where host tools are not guaranteed. We should not build a suite that only works on one developer laptop.
+
+### D. Resize matrix
+
+Resize needs its own coverage because it breaks terminal apps in ways simple shell tests will not catch.
+
+The suite must cover:
+
+- initial open size
+- repeated grow and shrink cycles
+- split-pane resize behavior
+- `cmux pty` `SIGWINCH` propagation
+- resize while a fullscreen TUI is active
+- resize after detach and reattach
+
+Assertions should include:
+
+- terminal-reported rows and columns
+- capture-pane output that reflects new wrapping
+- continued TUI rendering after resize
+
+### E. CI gates
+
+These suites need named CI coverage, not an aspirational note.
+
+CI should include at least:
+
+- `remote-daemon-tmux-parity`
+  - installs or uses real `tmux`
+  - runs the common-command parity harness
+- `remote-daemon-tui-resize`
+  - runs the direct PTY, TUI, and resize matrix
+- both jobs upload parity diffs, captures, and logs on failure
+
+The tmux baseline run is part of the gate. If the baseline `tmux` run itself fails, the job should fail instead of skipping the comparison.
+
+### F. Execution standard
+
+There is no lazy version of this verification.
+
+Before calling this ready to merge into `task-move-ios-app-into-cmux-repo`, we need all of these to be true:
+
+1. the parity suite exists
+2. the TUI and resize suite exists
+3. both suites were executed on this branch
+4. both suites passed
+5. both suites run in CI and are green
+
+If any of those are false, the work is not ready.
+
 ## Handoff gate
 
 Do not call this ready on "mostly migrated" status.
@@ -258,8 +416,10 @@ Only call this ready to merge into `task-move-ios-app-into-cmux-repo` when all o
 2. `cmux pty` is wired and verified against the live tagged app.
 3. The old local child bootstrap code is removed.
 4. CI includes the new direct-path coverage and is green.
-5. Manual dogfood on the tagged app passes the behavior checklist below.
-6. The final status reported to the user is "ready to merge into `task-move-ios-app-into-cmux-repo`", not "merged".
+5. Real `tmux` parity coverage for the agreed common subset is green.
+6. TUI and resize coverage for the direct Rust path is green.
+7. Manual dogfood on the tagged app passes the behavior checklist below.
+8. The final status reported to the user is "ready to merge into `task-move-ios-app-into-cmux-repo`", not "merged".
 
 ## Test plan
 
