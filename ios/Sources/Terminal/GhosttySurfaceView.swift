@@ -887,9 +887,17 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
 
         let width = UInt32(max(1, Int((bounds.width * scale).rounded(.down))))
         // When the keyboard is visible, keyboardHeight already includes the accessory bar.
-        // Only subtract the accessory bar height when the keyboard is hidden.
-        let accessoryHeight: CGFloat = keyboardHeight > 0 ? 0 : (inputProxy.inputAccessoryView?.frame.height ?? 44)
-        let effectiveHeight = max(1, bounds.height - keyboardHeight - accessoryHeight)
+        // When hidden, subtract the accessory bar height + safe area bottom inset
+        // (the view extends behind the safe area on notched/Dynamic Island iPhones).
+        let bottomInset: CGFloat
+        if keyboardHeight > 0 {
+            bottomInset = 0
+        } else {
+            let accessory: CGFloat = 44
+            let safeBottom = safeAreaInsets.bottom
+            bottomInset = accessory + safeBottom
+        }
+        let effectiveHeight = max(1, bounds.height - keyboardHeight - bottomInset)
         let height = UInt32(max(1, Int((effectiveHeight * scale).rounded(.down))))
         ghostty_surface_set_size(surface, width, height)
 
