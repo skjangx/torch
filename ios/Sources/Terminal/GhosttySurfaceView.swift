@@ -55,12 +55,16 @@ final class GhosttySurfaceBridge {
 }
 
 private enum GhosttySurfaceDisposer {
-    // ghostty_surface_free deadlocks: its pthread_join waits for an internal
-    // IO thread that never exits. Intentionally leak the surface to avoid
-    // hanging the app. TODO: fix the Ghostty surface teardown so the IO
-    // thread exits cleanly and re-enable the free.
+    // ghostty_surface_free deadlocks on iOS: Surface.deinit calls
+    // stop.notify() then pthread_join(ioThread), but xev's kqueue async
+    // wakeup doesn't work on iOS, so the IO thread never exits.
+    // Intentionally leak the surface until the Ghostty submodule gets an
+    // iOS-specific teardown path. Retain the bridge to prevent a dangling
+    // userdata pointer inside the leaked surface.
+    private static var leakedBridges: [GhosttySurfaceBridge] = []
+
     static func dispose(surface: ghostty_surface_t, bridge: GhosttySurfaceBridge) {
-        // Intentionally not calling ghostty_surface_free(surface) to avoid deadlock
+        leakedBridges.append(bridge)
     }
 }
 
