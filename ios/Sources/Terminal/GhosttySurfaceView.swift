@@ -426,7 +426,7 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         self.runtime = runtime
         self.delegate = delegate
         self.fontSize = fontSize
-        super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        super.init(frame: CGRect(x: 0, y: 0, width: 402, height: 700))
         bridge.attach(to: self)
         backgroundColor = .black
         isOpaque = true
@@ -759,6 +759,10 @@ final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
             if let config = runtime?.config {
                 applyBackgroundColorFromConfig(config)
             }
+            // Hide the snapshot fallback immediately. The Metal renderer
+            // handles all rendering once the surface exists.
+            snapshotFallbackView.isHidden = true
+            surfaceHasReceivedOutput = true
         }
         syncSurfaceGeometry()
         startDisplayLink()
