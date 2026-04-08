@@ -1264,7 +1264,17 @@ final class TerminalInputTextView: UITextView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stack)
 
+        // Arrow nub for directional pad
+        let nub = TerminalArrowNubView()
+        nub.onArrowKey = { [weak self] data in
+            self?.onEscapeSequence?(data)
+        }
+        nub.translatesAutoresizingMaskIntoConstraints = false
+        nub.backgroundColor = UIColor(white: 0.35, alpha: 1)
+        nub.layer.cornerRadius = 6
+
         container.addSubview(dismissButton)
+        container.addSubview(nub)
         container.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
@@ -1272,7 +1282,12 @@ final class TerminalInputTextView: UITextView {
             dismissButton.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             dismissButton.widthAnchor.constraint(equalToConstant: 32),
 
-            scrollView.leadingAnchor.constraint(equalTo: dismissButton.trailingAnchor, constant: 6),
+            nub.leadingAnchor.constraint(equalTo: dismissButton.trailingAnchor, constant: 6),
+            nub.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            nub.widthAnchor.constraint(equalToConstant: 36),
+            nub.heightAnchor.constraint(equalToConstant: 36),
+
+            scrollView.leadingAnchor.constraint(equalTo: nub.trailingAnchor, constant: 6),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),

@@ -882,14 +882,6 @@ struct TerminalWorkspaceScreen: View {
                 GhosttySurfaceRepresentable(surfaceView: surfaceView)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: [.horizontal, .bottom])
-                    .overlay(alignment: .bottomTrailing) {
-                        ArrowNubRepresentable { data in
-                            surfaceView.handleOutboundBytes(data)
-                        }
-                        .frame(width: 44, height: 44)
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 16)
-                    }
             } else {
                 ProgressView(TerminalHomeStrings.terminalOpening)
                     .tint(.white)
