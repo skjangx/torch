@@ -1506,8 +1506,8 @@ class TabManager: ObservableObject {
             .path
         return changedPaths.contains { path in
             path == repositoryInfo.cmuxIgnorePath
-                || path == repositoryInfo.gitConfigPath
-                || path == repositoryInfo.gitDirectory
+                || repositoryInfo.gitConfigPaths.contains(path)
+                || repositoryInfo.gitWatcherRoots.contains(path)
                 || path == gitMarkerPath
         }
     }
@@ -1520,19 +1520,22 @@ class TabManager: ObservableObject {
             .appendingPathComponent(".git")
             .path
         return changedPaths.contains { path in
-            if path == repositoryInfo.gitConfigPath
-                || path == repositoryInfo.gitDirectory
+            if repositoryInfo.gitConfigPaths.contains(path)
+                || repositoryInfo.gitWatcherRoots.contains(path)
                 || path == gitMarkerPath {
                 return true
             }
 
-            guard path.hasPrefix(repositoryInfo.gitDirectory + "/") else {
-                return false
+            for root in [repositoryInfo.gitDirectory, repositoryInfo.gitCommonDirectory] {
+                guard path.hasPrefix(root + "/") else { continue }
+                let relativePath = String(path.dropFirst(root.count + 1))
+                if relativePath == "HEAD"
+                    || relativePath == "packed-refs"
+                    || relativePath.hasPrefix("refs/") {
+                    return true
+                }
             }
-            let relativePath = String(path.dropFirst(repositoryInfo.gitDirectory.count + 1))
-            return relativePath == "HEAD"
-                || relativePath == "packed-refs"
-                || relativePath.hasPrefix("refs/")
+            return false
         }
     }
 
