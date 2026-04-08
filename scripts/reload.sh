@@ -430,7 +430,6 @@ if [[ -n "$TAG" && "$APP_NAME" != "$SEARCH_APP_NAME" ]]; then
         rm -f "$CMUX_SOCKET"
       fi
     fi
-    /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$TAG_APP_PATH" >/dev/null 2>&1 || true
   fi
   APP_PATH="$TAG_APP_PATH"
 fi
@@ -475,6 +474,7 @@ if [[ -x "$GHOSTTY_HELPER_SRC" ]]; then
   cp "$GHOSTTY_HELPER_SRC" "$BIN_DIR/ghostty"
   chmod +x "$BIN_DIR/ghostty"
 fi
+/usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$APP_PATH" >/dev/null 2>&1 || true
 CLI_PATH="$APP_PATH/Contents/Resources/bin/cmux"
 if [[ -x "$CLI_PATH" ]]; then
   echo "$CLI_PATH" > /tmp/cmux-last-cli-path || true
