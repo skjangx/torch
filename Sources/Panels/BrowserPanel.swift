@@ -2549,6 +2549,9 @@ final class BrowserPanel: Panel, ObservableObject {
                 forMainFrameOnly: true
             )
         )
+        // WebAuthn can originate from same-origin child frames. The native
+        // bridge rejects first-time authorization requests from cross-origin
+        // subframes before touching the shared browser authorization state.
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: BrowserWebAuthnBridgeContract.scriptSource,
@@ -2575,7 +2578,7 @@ final class BrowserPanel: Panel, ObservableObject {
         webView.uiDelegate = uiDelegate
         setupObservers(for: webView)
         setupReactGrabMessageHandler(for: webView)
-        let webAuthnCoordinator = BrowserWebAuthnCoordinator(webView: webView)
+        let webAuthnCoordinator = BrowserWebAuthnCoordinator()
         webAuthnCoordinator.install(on: webView)
         self.webAuthnCoordinator = webAuthnCoordinator
     }

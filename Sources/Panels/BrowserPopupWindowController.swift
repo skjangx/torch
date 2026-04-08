@@ -114,7 +114,7 @@ final class BrowserPopupWindowController: NSObject, NSWindowDelegate {
         webView.customUserAgent = BrowserUserAgentSettings.safariUserAgent
         BrowserThemeSettings.apply(openerPanel?.currentBrowserThemeMode ?? BrowserThemeSettings.mode(), to: webView)
         self.webView = webView
-        self.webAuthnCoordinator = BrowserWebAuthnCoordinator(webView: webView)
+        self.webAuthnCoordinator = BrowserWebAuthnCoordinator()
 
         // --- Window sizing from WKWindowFeatures ---
         let defaultWidth: CGFloat = 800

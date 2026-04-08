@@ -10,8 +10,8 @@ import WebKit
 enum BrowserWebAuthnBridgeContract {
     static let handlerName = "cmuxWebAuthn"
 
-    static var scriptSource: String {
-        let handlerName = handlerName
+    static let scriptSource: String = {
+        let handlerName = BrowserWebAuthnBridgeContract.handlerName
         return #"""
         (() => {
           if (window.__cmuxWebAuthnBridgeInstalled) {
@@ -76,15 +76,88 @@ enum BrowserWebAuthnBridgeContract {
               throw makeError("NotAllowedError", "Passkey access is not available.");
             });
 
+          const normalizedString = (value) =>
+            typeof value === "string" ? value.toLowerCase() : "";
+
+          const credentialTransports = (credentials) => {
+            if (!Array.isArray(credentials)) {
+              return [];
+            }
+
+            const transports = [];
+            for (const credential of credentials) {
+              if (!credential || !Array.isArray(credential.transports)) {
+                continue;
+              }
+
+              for (const transport of credential.transports) {
+                const normalizedTransport = normalizedString(transport);
+                if (normalizedTransport) {
+                  transports.push(normalizedTransport);
+                }
+              }
+            }
+
+            return transports;
+          };
+
+          const hasAnyTransport = (transports, candidates) =>
+            transports.some((transport) => candidates.includes(transport));
+
+          const requiresPasskeyAuthorization = (options, operation) => {
+            const publicKey = options && options.publicKey;
+            if (!publicKey) {
+              return false;
+            }
+
+            const attachment = normalizedString(
+              publicKey.authenticatorSelection &&
+                publicKey.authenticatorSelection.authenticatorAttachment
+            );
+            if (attachment === "platform") {
+              return true;
+            }
+            if (attachment === "cross-platform") {
+              return false;
+            }
+
+            if (
+              operation === "get" &&
+              normalizedString(options && options.mediation) === "conditional"
+            ) {
+              return true;
+            }
+
+            const allowCredentialTransports = credentialTransports(publicKey.allowCredentials);
+            if (allowCredentialTransports.length > 0) {
+              const hasPlatformTransport = hasAnyTransport(
+                allowCredentialTransports,
+                ["internal", "hybrid"]
+              );
+              const hasCrossPlatformTransport = hasAnyTransport(
+                allowCredentialTransports,
+                ["usb", "nfc", "ble"]
+              );
+              if (hasCrossPlatformTransport && !hasPlatformTransport) {
+                return false;
+              }
+              if (hasPlatformTransport) {
+                return true;
+              }
+            }
+
+            return operation === "create";
+          };
+
           const capabilityFlag = (key, fallback) =>
             currentCapabilities()
               .then((capabilities) => {
                 if (capabilities.denied === true) {
                   return false;
                 }
-                if (capabilities.authorized === true || capabilities.canPromptForAccess === true) {
-                  const value = capabilities[key];
-                  return typeof value === "boolean" ? value : true;
+                const value = capabilities[key];
+                if (typeof value === "boolean") {
+                  return value;
                 }
                 return typeof fallback === "function" ? fallback() : !!fallback;
               })
@@ -99,7 +172,7 @@ enum BrowserWebAuthnBridgeContract {
               configurable: true,
               writable: true,
               value: function create(options) {
-                if (!options || !options.publicKey) {
+                if (!options || !options.publicKey || !requiresPasskeyAuthorization(options, "create")) {
                   return originalCreate.call(this, options);
                 }
                 return requestAccessIfNeeded().then(() => originalCreate.call(this, options));
@@ -110,7 +183,7 @@ enum BrowserWebAuthnBridgeContract {
               configurable: true,
               writable: true,
               value: function get(options) {
-                if (!options || !options.publicKey) {
+                if (!options || !options.publicKey || !requiresPasskeyAuthorization(options, "get")) {
                   return originalGet.call(this, options);
                 }
                 return requestAccessIfNeeded().then(() => originalGet.call(this, options));
@@ -145,7 +218,7 @@ enum BrowserWebAuthnBridgeContract {
           return true;
         })();
         """#
-    }
+    }()
 }
 
 private enum BrowserWebAuthnBridgeMessageKind: String {
@@ -202,6 +275,48 @@ private enum BrowserWebAuthnRequestParser {
     }
 }
 
+private struct BrowserWebAuthnSecurityOrigin {
+    let scheme: String
+    let host: String
+    let port: Int
+
+    init(origin: WKSecurityOrigin) {
+        scheme = origin.protocol.lowercased()
+        host = origin.host.lowercased()
+        port = Self.normalizedPort(scheme: scheme, port: origin.port)
+    }
+
+    init?(url: URL) {
+        guard let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased() else {
+            return nil
+        }
+        self.scheme = scheme
+        self.host = host
+        port = Self.normalizedPort(scheme: scheme, port: url.port)
+    }
+
+    func matches(_ origin: WKSecurityOrigin) -> Bool {
+        let other = Self(origin: origin)
+        return scheme == other.scheme && host == other.host && port == other.port
+    }
+
+    private static func normalizedPort(scheme: String, port: Int?) -> Int {
+        if let port, port > 0 {
+            return port
+        }
+
+        switch scheme {
+        case "http":
+            return 80
+        case "https":
+            return 443
+        default:
+            return -1
+        }
+    }
+}
+
 @MainActor
 private final class BrowserPasskeyAuthorizationGate {
     static let shared = BrowserPasskeyAuthorizationGate()
@@ -236,15 +351,11 @@ private final class BrowserPasskeyAuthorizationGate {
 }
 
 final class BrowserWebAuthnCoordinator: NSObject, WKScriptMessageHandlerWithReply {
-    private weak var webView: WKWebView?
-
-    init(webView: WKWebView) {
-        self.webView = webView
+    override init() {
         super.init()
     }
 
     func install(on webView: WKWebView) {
-        self.webView = webView
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: BrowserWebAuthnBridgeContract.handlerName, contentWorld: .page)
         controller.addScriptMessageHandler(self, contentWorld: .page, name: BrowserWebAuthnBridgeContract.handlerName)
@@ -268,6 +379,7 @@ final class BrowserWebAuthnCoordinator: NSObject, WKScriptMessageHandlerWithRepl
                 case .capabilities:
                     replyHandler(capabilityReply(for: BrowserPasskeyAuthorizationGate.shared.currentAuthorizationState()), nil)
                 case .requestAccess:
+                    try validateAuthorizationRequestOrigin(for: message)
                     let state = await BrowserPasskeyAuthorizationGate.shared.authorizeIfNeeded()
                     replyHandler(accessReply(for: state), nil)
                 }
@@ -306,23 +418,42 @@ private extension BrowserWebAuthnCoordinator {
     func capabilityPayload(
         for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState
     ) -> [String: Any] {
-        let denied = state == .denied
         let authorized = state == .authorized
+        let denied = state == .denied
         let canPromptForAccess = state == .notDetermined
-
-        return [
+        var payload: [String: Any] = [
             "authorized": authorized,
             "denied": denied,
             "canPromptForAccess": canPromptForAccess,
-            "userVerifyingPlatformAuthenticatorAvailable": !denied,
-            "conditionalMediationAvailable": !denied,
-            "hybridTransportAvailable": !denied,
-            "securityKeysAvailable": {
-                if #available(macOS 14.4, *) {
-                    return true
-                }
-                return false
-            }(),
         ]
+
+        if #available(macOS 26.2, *), state != .denied {
+            payload["userVerifyingPlatformAuthenticatorAvailable"] =
+                ASAuthorizationWebBrowserPublicKeyCredentialManager.isDeviceConfiguredForPasskeys
+        }
+
+        return payload
+    }
+
+    func validateAuthorizationRequestOrigin(for message: WKScriptMessage) throws {
+        let currentState = BrowserPasskeyAuthorizationGate.shared.currentAuthorizationState()
+        guard currentState == .notDetermined else { return }
+        guard callerMayRequestAuthorization(message) else {
+            throw BrowserWebAuthnBridgeError.notAllowed("Passkey access is not available.")
+        }
+    }
+
+    func callerMayRequestAuthorization(_ message: WKScriptMessage) -> Bool {
+        if message.frameInfo.isMainFrame {
+            return true
+        }
+
+        guard let webView = message.webView,
+              let topLevelURL = webView.url,
+              let topLevelOrigin = BrowserWebAuthnSecurityOrigin(url: topLevelURL) else {
+            return false
+        }
+
+        return topLevelOrigin.matches(message.frameInfo.securityOrigin)
     }
 }
