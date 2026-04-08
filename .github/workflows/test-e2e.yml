@@ -28,9 +28,6 @@ on:
           - depot-macos-latest
           - depot-macos-14
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   e2e:
     runs-on: ${{ inputs.runner || 'depot-macos-latest' }}
@@ -39,7 +36,7 @@ jobs:
       TEST_REF: ${{ inputs.ref || github.ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
@@ -173,7 +170,7 @@ jobs:
         run: rm -rf ~/Library/Developer/Xcode/DerivedData/GhosttyTabs-*
 
       - name: Cache Swift packages
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .ci-source-packages
           key: spm-${{ inputs.runner || 'depot-macos-latest' }}-${{ hashFiles('GhosttyTabs.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
