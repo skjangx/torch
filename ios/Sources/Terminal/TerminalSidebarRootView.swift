@@ -263,6 +263,7 @@ struct TerminalSidebarRootView: View {
                 }
             }
             .listStyle(.plain)
+            .listSectionSpacing(.compact)
             .accessibilityIdentifier("terminal.home")
             .navigationTitle(TerminalHomeStrings.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
