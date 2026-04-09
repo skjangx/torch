@@ -143,14 +143,28 @@ enum ReactGrabScriptLoader {
     }
 
     /// Post-integrity-check patches applied to the upstream script.
-    /// The truncation helper `Pa=(e,t)=>e.length>t?...` caps text to 100 chars
-    /// in element snippets. Replace with an identity function so the full
-    /// innerText is preserved.
     private static func applyPatches(_ script: String) -> String {
-        script.replacingOccurrences(
+        var s = script
+
+        // The truncation helper `Pa=(e,t)=>e.length>t?...` caps text to 100 chars
+        // in element snippets. Replace with an identity function so the full
+        // innerText is preserved.
+        s = s.replacingOccurrences(
             of: "Pa=(e,t)=>e.length>t?`${e.slice(0,t)}...`:e",
             with: "Pa=(e,t)=>e"
         )
+
+        // Tailwind v4 CSS relies on @property to register --tw-* custom properties,
+        // but @property inside shadow DOM <style> may not register globally in WebKit.
+        // The @supports fallback that initializes these properties fails on modern
+        // Safari (16.4+) because Safari now supports margin-trim:inline. Force the
+        // fallback to always apply so --tw-* properties have correct initial values.
+        s = s.replacingOccurrences(
+            of: "@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b))))",
+            with: "@supports (display:block)"
+        )
+
+        return s
     }
 }
 
