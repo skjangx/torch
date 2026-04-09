@@ -1,5 +1,6 @@
 import AuthenticationServices
 import Foundation
+import ObjectiveC.runtime
 import WebKit
 
 /// Thin browser-passkey bridge for `WKWebView`.
@@ -427,12 +428,28 @@ private extension BrowserWebAuthnCoordinator {
             "canPromptForAccess": canPromptForAccess,
         ]
 
-        if #available(macOS 26.2, *), state != .denied {
-            payload["userVerifyingPlatformAuthenticatorAvailable"] =
-                ASAuthorizationWebBrowserPublicKeyCredentialManager.isDeviceConfiguredForPasskeys
+        if state != .denied,
+           let deviceConfiguredForPasskeys = deviceConfiguredForPasskeys() {
+            payload["userVerifyingPlatformAuthenticatorAvailable"] = deviceConfiguredForPasskeys
         }
 
         return payload
+    }
+
+    func deviceConfiguredForPasskeys() -> Bool? {
+        let selector = NSSelectorFromString("isDeviceConfiguredForPasskeys")
+        let managerClass: AnyClass = ASAuthorizationWebBrowserPublicKeyCredentialManager.self
+
+        guard let metaClass = object_getClass(managerClass),
+              class_respondsToSelector(metaClass, selector),
+              let method = class_getClassMethod(managerClass, selector) else {
+            return nil
+        }
+
+        typealias Getter = @convention(c) (AnyClass, Selector) -> Bool
+        let implementation = method_getImplementation(method)
+        let getter = unsafeBitCast(implementation, to: Getter.self)
+        return getter(managerClass, selector)
     }
 
     func validateAuthorizationRequestOrigin(for message: WKScriptMessage) throws {
