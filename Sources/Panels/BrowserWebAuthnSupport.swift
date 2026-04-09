@@ -1,4 +1,5 @@
 import AuthenticationServices
+import CoreBluetooth
 import Foundation
 import ObjectiveC.runtime
 import WebKit
@@ -319,6 +320,113 @@ private struct BrowserWebAuthnSecurityOrigin {
 }
 
 @MainActor
+private struct BrowserBluetoothAuthorizationState {
+    let authorization: CBManagerAuthorization
+    let managerState: CBManagerState?
+
+    var isAuthorized: Bool {
+        authorization == .allowedAlways
+    }
+
+    var isPoweredOn: Bool? {
+        guard let managerState else { return nil }
+        return managerState == .poweredOn
+    }
+
+    var supportsHybridTransport: Bool {
+        isAuthorized && managerState == .poweredOn
+    }
+}
+
+@MainActor
+private final class BrowserBluetoothAuthorizationGate: NSObject, @preconcurrency CBCentralManagerDelegate {
+    static let shared = BrowserBluetoothAuthorizationGate()
+
+    private var centralManager: CBCentralManager?
+    private var inFlightRequest: Task<BrowserBluetoothAuthorizationState, Never>?
+    private var pendingContinuation: CheckedContinuation<BrowserBluetoothAuthorizationState, Never>?
+    private var hasPrimedBluetoothActivity = false
+
+    func currentState() -> BrowserBluetoothAuthorizationState {
+        .init(
+            authorization: CBCentralManager.authorization,
+            managerState: centralManager?.state
+        )
+    }
+
+    func prepareIfNeeded() async -> BrowserBluetoothAuthorizationState {
+        let currentState = currentState()
+        switch currentState.authorization {
+        case .denied, .restricted:
+            return currentState
+        case .allowedAlways where currentState.managerState == .poweredOn:
+            return currentState
+        default:
+            break
+        }
+
+        if let inFlightRequest {
+            return await inFlightRequest.value
+        }
+
+        let request = Task { @MainActor in
+            await withCheckedContinuation { continuation in
+                pendingContinuation = continuation
+                if let centralManager {
+                    centralManagerDidUpdateState(centralManager)
+                } else {
+                    centralManager = CBCentralManager(
+                        delegate: self,
+                        queue: nil,
+                        options: [CBCentralManagerOptionShowPowerAlertKey: true]
+                    )
+                }
+            }
+        }
+        inFlightRequest = request
+        let result = await request.value
+        inFlightRequest = nil
+        return result
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        let currentState = BrowserBluetoothAuthorizationState(
+            authorization: CBCentralManager.authorization,
+            managerState: central.state
+        )
+
+        switch currentState.authorization {
+        case .notDetermined:
+            return
+        case .allowedAlways:
+            primeBluetoothActivityIfNeeded(with: central)
+            finish(with: currentState)
+        case .denied, .restricted:
+            finish(with: currentState)
+        @unknown default:
+            finish(with: currentState)
+        }
+    }
+
+    private func primeBluetoothActivityIfNeeded(with central: CBCentralManager) {
+        guard !hasPrimedBluetoothActivity, central.state == .poweredOn else { return }
+        hasPrimedBluetoothActivity = true
+        // Touch the central path once so macOS records actual Bluetooth usage for
+        // hybrid/WebAuthn handoff flows, then stop immediately.
+        central.scanForPeripherals(
+            withServices: nil,
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+        )
+        central.stopScan()
+    }
+
+    private func finish(with state: BrowserBluetoothAuthorizationState) {
+        pendingContinuation?.resume(returning: state)
+        pendingContinuation = nil
+    }
+}
+
+@MainActor
 private final class BrowserPasskeyAuthorizationGate {
     static let shared = BrowserPasskeyAuthorizationGate()
 
@@ -378,11 +486,18 @@ final class BrowserWebAuthnCoordinator: NSObject, WKScriptMessageHandlerWithRepl
             do {
                 switch try BrowserWebAuthnRequestParser.parseKind(from: message.body) {
                 case .capabilities:
-                    replyHandler(capabilityReply(for: BrowserPasskeyAuthorizationGate.shared.currentAuthorizationState()), nil)
+                    replyHandler(
+                        capabilityReply(
+                            for: BrowserPasskeyAuthorizationGate.shared.currentAuthorizationState(),
+                            bluetoothState: BrowserBluetoothAuthorizationGate.shared.currentState()
+                        ),
+                        nil
+                    )
                 case .requestAccess:
                     try validateAuthorizationRequestOrigin(for: message)
+                    let bluetoothState = await BrowserBluetoothAuthorizationGate.shared.prepareIfNeeded()
                     let state = await BrowserPasskeyAuthorizationGate.shared.authorizeIfNeeded()
-                    replyHandler(accessReply(for: state), nil)
+                    replyHandler(accessReply(for: state, bluetoothState: bluetoothState), nil)
                 }
             } catch let error as BrowserWebAuthnBridgeError {
                 replyHandler(error.replyObject(), nil)
@@ -396,18 +511,20 @@ final class BrowserWebAuthnCoordinator: NSObject, WKScriptMessageHandlerWithRepl
 @MainActor
 private extension BrowserWebAuthnCoordinator {
     func capabilityReply(
-        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState
+        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState,
+        bluetoothState: BrowserBluetoothAuthorizationState
     ) -> [String: Any] {
         [
             "ok": true,
-            "capabilities": capabilityPayload(for: state),
+            "capabilities": capabilityPayload(for: state, bluetoothState: bluetoothState),
         ]
     }
 
     func accessReply(
-        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState
+        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState,
+        bluetoothState: BrowserBluetoothAuthorizationState
     ) -> [String: Any] {
-        let capabilities = capabilityPayload(for: state)
+        let capabilities = capabilityPayload(for: state, bluetoothState: bluetoothState)
         return [
             "ok": true,
             "authorized": capabilities["authorized"] as? Bool ?? false,
@@ -417,7 +534,8 @@ private extension BrowserWebAuthnCoordinator {
     }
 
     func capabilityPayload(
-        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState
+        for state: ASAuthorizationWebBrowserPublicKeyCredentialManager.AuthorizationState,
+        bluetoothState: BrowserBluetoothAuthorizationState
     ) -> [String: Any] {
         let authorized = state == .authorized
         let denied = state == .denied
@@ -426,7 +544,13 @@ private extension BrowserWebAuthnCoordinator {
             "authorized": authorized,
             "denied": denied,
             "canPromptForAccess": canPromptForAccess,
+            "bluetoothAuthorized": bluetoothState.isAuthorized,
+            "hybridTransportAvailable": bluetoothState.supportsHybridTransport,
         ]
+
+        if let bluetoothPoweredOn = bluetoothState.isPoweredOn {
+            payload["bluetoothPoweredOn"] = bluetoothPoweredOn
+        }
 
         if state != .denied,
            let deviceConfiguredForPasskeys = deviceConfiguredForPasskeys() {
