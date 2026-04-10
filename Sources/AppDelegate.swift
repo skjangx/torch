@@ -4310,17 +4310,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         availableDisplays: [SessionDisplayGeometry],
         fallbackDisplay: SessionDisplayGeometry?
     ) -> CGRect? {
+        let minWidth = CGFloat(SessionPersistencePolicy.minimumWindowWidth)
+        let minHeight = CGFloat(SessionPersistencePolicy.minimumWindowHeight)
+        let minimumVisibleWidth = Self.minimumVisibleRestoredWindowWidth
+        let minimumVisibleHeight = max(Self.minimumVisibleRestoredWindowHeight, minHeight)
         let liveResolved = resolvedWindowFrame(
             from: SessionRectSnapshot(currentFrame),
             display: currentDisplaySnapshot,
             availableDisplays: availableDisplays,
             fallbackDisplay: fallbackDisplay
         )
+        let liveFrameIsUsable = hasSufficientVisibleFrame(
+            currentFrame,
+            in: availableDisplays,
+            minWidth: minWidth,
+            minHeight: minHeight,
+            minimumVisibleWidth: minimumVisibleWidth,
+            minimumVisibleHeight: minimumVisibleHeight
+        ) || display(
+            for: currentDisplaySnapshot,
+            in: availableDisplays
+        ).map {
+            shouldPreserveAccessibleFrame(frame: currentFrame, targetDisplay: $0)
+        } ?? false
 
-        // Prefer the live frame whenever the window still belongs to a current
-        // display. That avoids snapping a visible window back to older persisted
-        // geometry during didChangeScreenParameters.
-        guard currentDisplaySnapshot == nil,
+        // Prefer the live frame only when it is genuinely usable on the current
+        // display set. A sliver intersection is not enough: in dock/undock
+        // flows AppKit can leave a thin strip on-screen, and re-saving that
+        // clamped sliver would overwrite the display-specific geometry we want
+        // to restore.
+        guard !liveFrameIsUsable,
               let matchingPersistedGeometry else {
             return liveResolved
         }
