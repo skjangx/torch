@@ -51,6 +51,8 @@ final class TerminalRemoteDaemonSessionTransport: @unchecked Sendable, TerminalT
     private let client: any TerminalRemoteDaemonSessionClient
     private let command: String
     private let sharedSessionID: String?
+    // Stable attachment ID: reused across reconnections so we don't leak attachments
+    private let stableAttachmentID: String = "ios-\(UUID().uuidString.prefix(8).lowercased())"
     private let resumeState: TerminalRemoteDaemonResumeState?
     private let readTimeoutMilliseconds: Int
     private let maxReadBytes: Int
@@ -148,21 +150,20 @@ final class TerminalRemoteDaemonSessionTransport: @unchecked Sendable, TerminalT
         let cols = max(1, initialSize.columns)
         let rows = max(1, initialSize.rows)
 
-        // For shared sessions, always use the shared session ID.
-        // This ensures all clients for the same workspace share one PTY.
+        // For shared sessions, always use the shared session ID with a stable
+        // attachment ID so we don't leak attachments on reconnection.
         if let sharedSessionID {
-            let newAttachmentID = UUID().uuidString.lowercased()
             do {
                 _ = try await client.sessionAttach(
                     sessionID: sharedSessionID,
-                    attachmentID: newAttachmentID,
+                    attachmentID: stableAttachmentID,
                     cols: cols,
                     rows: rows
                 )
-                NSLog("📱 SessionTransport: attached to shared session %@", sharedSessionID)
+                NSLog("📱 SessionTransport: attached to shared session %@ as %@", sharedSessionID, stableAttachmentID)
                 withLockedState {
                     sessionID = sharedSessionID
-                    attachmentID = newAttachmentID
+                    attachmentID = stableAttachmentID
                     nextOffset = 0
                     closed = false
                 }
