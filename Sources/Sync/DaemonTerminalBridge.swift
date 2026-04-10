@@ -36,10 +36,11 @@ final class DaemonTerminalBridge: @unchecked Sendable {
     }
 
     /// Deterministically compute the daemon session ID for a workspace+surface pair.
-    /// Both the bridge and the workspace sync publisher use this so the ID is known
-    /// even before the bridge is running (e.g. lazily-created restored surfaces).
+    /// Uses the surface ID only (not workspace ID) because surface IDs persist
+    /// across app restarts in the session snapshot, while workspace IDs are
+    /// regenerated. This keeps daemon sessions stable across macOS app restarts.
     static func computeSessionID(workspaceID: UUID, surfaceID: UUID) -> String {
-        "ws-\(workspaceID.uuidString.lowercased())-\(surfaceID.uuidString.prefix(8).lowercased())"
+        "ws-\(surfaceID.uuidString.lowercased())"
     }
 
     /// Pre-create a daemon session without starting a bridge. Used on session restore
