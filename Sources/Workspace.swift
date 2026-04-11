@@ -11159,6 +11159,10 @@ extension Workspace: BonsplitDelegate {
 
     @MainActor
     private func confirmClosePanel(for tabId: TabID) async -> Bool {
+        guard CloseTabWarningSettings.isEnabled() else {
+            return true
+        }
+
         let alert = NSAlert()
 
         alert.messageText = String(localized: "dialog.closeTab.title", defaultValue: "Close tab?")

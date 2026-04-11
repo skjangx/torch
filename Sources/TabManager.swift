@@ -4227,11 +4227,13 @@ class TabManager: ObservableObject {
 
         if let terminalPanel = tab.terminalPanel(for: surfaceId),
            tab.panelNeedsConfirmClose(panelId: surfaceId, fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()) {
-            guard confirmClose(
-                title: String(localized: "dialog.closeTab.title", defaultValue: "Close tab?"),
-                message: String(localized: "dialog.closeTab.message", defaultValue: "This will close the current tab."),
-                acceptCmdD: false
-            ) else { return }
+            if CloseTabWarningSettings.isEnabled() {
+                guard confirmClose(
+                    title: String(localized: "dialog.closeTab.title", defaultValue: "Close tab?"),
+                    message: String(localized: "dialog.closeTab.message", defaultValue: "This will close the current tab."),
+                    acceptCmdD: false
+                ) else { return }
+            }
         }
 
         _ = tab.closePanel(surfaceId, force: true)
