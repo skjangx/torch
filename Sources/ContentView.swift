@@ -5909,8 +5909,8 @@ struct ContentView: View {
 
         var windowLabelById: [UUID: String] = [:]
         if orderedSummaries.count > 1 {
-            for (index, summary) in orderedSummaries.enumerated() where summary.windowId != windowId {
-                windowLabelById[summary.windowId] = String(localized: "commandPalette.switcher.windowLabel", defaultValue: "Window \(index + 1)")
+            for summary in orderedSummaries where summary.windowId != windowId {
+                windowLabelById[summary.windowId] = summary.displayLabel
             }
         }
 

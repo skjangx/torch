@@ -4953,7 +4953,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func windowMoveTargets(referenceWindowId: UUID?) -> [WindowMoveTarget] {
         let orderedSummaries = orderedMainWindowSummaries(referenceWindowId: referenceWindowId)
-        let labels = windowLabelsById(orderedSummaries: orderedSummaries, referenceWindowId: referenceWindowId)
+        let labels = windowLabelsById(orderedSummaries: orderedSummaries, referenceWindowId: referenceWindowId, forDisplay: true)
         return orderedSummaries.compactMap { summary in
             guard let manager = tabManagerFor(windowId: summary.windowId) else { return nil }
             let label = labels[summary.windowId] ?? "Window"
@@ -4968,7 +4968,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func workspaceMoveTargets(excludingWorkspaceId: UUID? = nil, referenceWindowId: UUID?) -> [WorkspaceMoveTarget] {
         let orderedSummaries = orderedMainWindowSummaries(referenceWindowId: referenceWindowId)
-        let labels = windowLabelsById(orderedSummaries: orderedSummaries, referenceWindowId: referenceWindowId)
+        let labels = windowLabelsById(orderedSummaries: orderedSummaries, referenceWindowId: referenceWindowId, forDisplay: true)
 
         var targets: [WorkspaceMoveTarget] = []
         targets.reserveCapacity(orderedSummaries.reduce(0) { partial, summary in
@@ -6018,14 +6018,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    private func windowLabelsById(orderedSummaries: [MainWindowSummary], referenceWindowId: UUID?) -> [UUID: String] {
+    private func windowLabelsById(orderedSummaries: [MainWindowSummary], referenceWindowId: UUID?, forDisplay: Bool = false) -> [UUID: String] {
         var labels: [UUID: String] = [:]
-        for (index, summary) in orderedSummaries.enumerated() {
-            if summary.windowId == referenceWindowId {
-                labels[summary.windowId] = String(localized: "menu.currentWindow", defaultValue: "Current Window")
-            } else {
-                let number = index + 1
-                labels[summary.windowId] = String(localized: "menu.windowNumber", defaultValue: "Window \(number)")
+        if forDisplay {
+            for summary in orderedSummaries {
+                labels[summary.windowId] = summary.displayLabel
+            }
+        } else {
+            for (index, summary) in orderedSummaries.enumerated() {
+                if summary.windowId == referenceWindowId {
+                    labels[summary.windowId] = String(localized: "menu.currentWindow", defaultValue: "Current Window")
+                } else {
+                    let number = index + 1
+                    labels[summary.windowId] = String(localized: "menu.windowNumber", defaultValue: "Window \(number)")
+                }
             }
         }
         return labels
