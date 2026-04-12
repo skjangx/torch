@@ -2724,6 +2724,7 @@ private struct FileExplorerStyleDebugView: View {
 
 extension Notification.Name {
     static let fileExplorerStyleDidChange = Notification.Name("fileExplorerStyleDidChange")
+    static let fileExplorerFeatureToggled = Notification.Name("fileExplorerFeatureToggled")
     static let titlebarShortcutHintsVisibilityChanged = Notification.Name("titlebarShortcutHintsVisibilityChanged")
 }
 
@@ -4364,12 +4365,22 @@ struct SettingsView: View {
             String(localized: "settings.app.fileExplorer", defaultValue: "File Explorer"),
             subtitle: String(localized: "settings.app.fileExplorer.subtitle", defaultValue: "Show a file explorer panel on the right side of the terminal (Cmd+Option+B).")
         ) {
-            Toggle("", isOn: $fileExplorerFeatureEnabled)
-                .labelsHidden()
-                .controlSize(.small)
-                .accessibilityLabel(
-                    String(localized: "settings.app.fileExplorer", defaultValue: "File Explorer")
-                )
+            Toggle("", isOn: Binding(
+                get: { fileExplorerFeatureEnabled },
+                set: { newValue in
+                    fileExplorerFeatureEnabled = newValue
+                    NotificationCenter.default.post(
+                        name: .fileExplorerFeatureToggled,
+                        object: nil,
+                        userInfo: ["enabled": newValue]
+                    )
+                }
+            ))
+            .labelsHidden()
+            .controlSize(.small)
+            .accessibilityLabel(
+                String(localized: "settings.app.fileExplorer", defaultValue: "File Explorer")
+            )
         }
     }
 

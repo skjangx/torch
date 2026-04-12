@@ -449,7 +449,7 @@ final class FileExplorerState: ObservableObject {
         didSet { UserDefaults.standard.set(showHiddenFiles, forKey: "fileExplorer.showHidden") }
     }
 
-    private var defaultsObserver: NSKeyValueObservation?
+    private var defaultsObserver: AnyObject?
 
     init() {
         let defaults = UserDefaults.standard
@@ -462,23 +462,24 @@ final class FileExplorerState: ObservableObject {
         let storedShowHidden = defaults.object(forKey: "fileExplorer.showHidden")
         self.showHiddenFiles = storedShowHidden == nil ? true : defaults.bool(forKey: "fileExplorer.showHidden")
 
-        // KVO on the specific UserDefaults key for reliable cross-window observation
-        defaultsObserver = UserDefaults.standard.observe(
-            \.fileExplorerFeatureEnabled,
-            options: [.new]
-        ) { [weak self] _, change in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                let enabled = FileExplorerFeatureSettings.isEnabled()
-                if self.isFeatureEnabled != enabled {
-                    self.isFeatureEnabled = enabled
-                }
+        // Listen for feature flag changes from settings UI
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: .fileExplorerFeatureToggled,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            let enabled = (notification.userInfo?["enabled"] as? Bool) ?? FileExplorerFeatureSettings.isEnabled()
+            if self.isFeatureEnabled != enabled {
+                self.isFeatureEnabled = enabled
             }
-        }
+        } as AnyObject
     }
 
     deinit {
-        defaultsObserver?.invalidate()
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
     }
 
     func toggle() {

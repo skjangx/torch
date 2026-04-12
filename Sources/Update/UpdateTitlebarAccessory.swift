@@ -1211,23 +1211,25 @@ final class UpdateTitlebarAccessoryController {
     private let controlsControllers = NSHashTable<TitlebarControlsAccessoryViewController>.weakObjects()
     private var lastKnownPresentationMode: WorkspacePresentationModeSettings.Mode = WorkspacePresentationModeSettings.mode()
     private var lastKnownFileExplorerEnabled: Bool = FileExplorerFeatureSettings.isEnabled()
-    private var fileExplorerKVO: NSKeyValueObservation?
+    private var fileExplorerObserver: NSObjectProtocol?
 
     init(viewModel: UpdateViewModel) {
         self.updateViewModel = viewModel
-        fileExplorerKVO = UserDefaults.standard.observe(
-            \.fileExplorerFeatureEnabled,
-            options: [.new]
-        ) { [weak self] _, _ in
-            DispatchQueue.main.async {
-                self?.reattachIfFileExplorerFlagChanged()
-            }
+        fileExplorerObserver = NotificationCenter.default.addObserver(
+            forName: .fileExplorerFeatureToggled,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reattachIfFileExplorerFlagChanged()
         }
     }
 
     deinit {
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
+        }
+        if let fileExplorerObserver {
+            NotificationCenter.default.removeObserver(fileExplorerObserver)
         }
     }
 
