@@ -4936,7 +4936,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         refreshAllWindowDisplayLabels()
     }
 
-    func refreshAllWindowDisplayLabels() {
+    private func refreshAllWindowDisplayLabels() {
         var unnamedIndex = 1
         for windowId in mainWindowCreationOrder {
             guard let context = mainWindowContexts.values.first(where: { $0.windowId == windowId }) else { continue }
@@ -6240,6 +6240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 store.clearNotifications(forTabId: tab.id)
             }
         }
+        refreshAllWindowDisplayLabels()
     }
 
     private func mainWindowId(for window: NSWindow) -> UUID? {
@@ -7238,6 +7239,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             sidebarSelectionState: sidebarSelectionState
         )
         // Restore custom name from snapshot AFTER registration creates the context.
+        // registerMainWindow already called refreshAllWindowDisplayLabels(), but with
+        // customName still nil. This second refresh corrects the label; the guard in
+        // setWindowDisplayLabel skips unchanged windows so the cost is minimal.
         if let restoredName = sessionWindowSnapshot?.customName {
             let key = ObjectIdentifier(window)
             mainWindowContexts[key]?.customName = restoredName

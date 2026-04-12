@@ -865,10 +865,10 @@ class TabManager: ObservableObject {
     weak var window: NSWindow?
 
     /// User-assigned window name (nil when unnamed). Set by AppDelegate.setWindowName().
-    @Published var windowName: String?
+    @Published private(set) var windowName: String?
     /// Computed display label — custom name or "Window N" with contiguous numbering.
     /// Set by AppDelegate.refreshAllWindowDisplayLabels().
-    @Published var windowDisplayLabel: String = "Window 1"
+    @Published private(set) var windowDisplayLabel: String = "Window 1"
 
     @Published var tabs: [Workspace] = []
     @Published private(set) var isWorkspaceCycleHot: Bool = false
@@ -4639,6 +4639,7 @@ class TabManager: ObservableObject {
     }
 
     func setWindowDisplayLabel(_ label: String) {
+        guard windowDisplayLabel != label else { return }
         windowDisplayLabel = label
         updateWindowTitleForSelectedTab()
     }
