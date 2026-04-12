@@ -2668,6 +2668,7 @@ class TerminalController {
         var focused: [String: Any] = [:]
         v2MainSync {
             let windowId = v2ResolveWindowId(tabManager: tabManager)
+            let windowSummary = windowId.flatMap { wid in AppDelegate.shared?.listMainWindowSummaries().first(where: { $0.windowId == wid }) }
             if let wsId = tabManager.selectedTabId,
                let ws = tabManager.tabs.first(where: { $0.id == wsId }) {
                 let paneUUID = ws.bonsplitController.focusedPaneId?.id
@@ -2675,6 +2676,8 @@ class TerminalController {
                 focused = [
                     "window_id": v2OrNull(windowId?.uuidString),
                     "window_ref": v2Ref(kind: .window, uuid: windowId),
+                    "window_name": v2OrNull(windowSummary?.name),
+                    "window_display_label": windowSummary?.displayLabel ?? "Window",
                     "workspace_id": wsId.uuidString,
                     "workspace_ref": v2Ref(kind: .workspace, uuid: wsId),
                     "pane_id": v2OrNull(paneUUID?.uuidString),
@@ -2689,7 +2692,9 @@ class TerminalController {
             } else {
                 focused = [
                     "window_id": v2OrNull(windowId?.uuidString),
-                    "window_ref": v2Ref(kind: .window, uuid: windowId)
+                    "window_ref": v2Ref(kind: .window, uuid: windowId),
+                    "window_name": v2OrNull(windowSummary?.name),
+                    "window_display_label": windowSummary?.displayLabel ?? "Window"
                 ]
             }
         }
@@ -2839,6 +2844,8 @@ class TerminalController {
             "id": summary.windowId.uuidString,
             "ref": v2Ref(kind: .window, uuid: summary.windowId),
             "index": index,
+            "name": v2OrNull(summary.name),
+            "display_label": summary.displayLabel,
             "key": summary.isKeyWindow,
             "visible": summary.isVisible,
             "workspace_count": workspaceNodes.count,
@@ -3246,6 +3253,8 @@ class TerminalController {
                 "id": item.windowId.uuidString,
                 "ref": v2Ref(kind: .window, uuid: item.windowId),
                 "index": index,
+                "name": v2OrNull(item.name),
+                "display_label": item.displayLabel,
                 "key": item.isKeyWindow,
                 "visible": item.isVisible,
                 "workspace_count": item.workspaceCount,
@@ -3263,9 +3272,12 @@ class TerminalController {
         guard let windowId = v2ResolveWindowId(tabManager: tabManager) else {
             return .err(code: "not_found", message: "Current window not found", data: nil)
         }
+        let summary = v2MainSync { AppDelegate.shared?.listMainWindowSummaries().first(where: { $0.windowId == windowId }) }
         return .ok([
             "window_id": windowId.uuidString,
-            "window_ref": v2Ref(kind: .window, uuid: windowId)
+            "window_ref": v2Ref(kind: .window, uuid: windowId),
+            "name": v2OrNull(summary?.name),
+            "display_label": summary?.displayLabel ?? "Window"
         ])
     }
 
