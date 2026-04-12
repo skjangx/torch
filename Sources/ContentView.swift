@@ -1895,6 +1895,7 @@ struct ContentView: View {
         enum Kind: Equatable {
             case workspace(workspaceId: UUID)
             case tab(workspaceId: UUID, panelId: UUID)
+            case window(windowId: UUID)
         }
 
         let kind: Kind
@@ -1906,6 +1907,8 @@ struct ContentView: View {
                 return String(localized: "commandPalette.rename.workspaceTitle", defaultValue: "Rename Workspace")
             case .tab:
                 return String(localized: "commandPalette.rename.tabTitle", defaultValue: "Rename Tab")
+            case .window:
+                return String(localized: "commandPalette.rename.windowTitle", defaultValue: "Rename Window")
             }
         }
 
@@ -1915,6 +1918,8 @@ struct ContentView: View {
                 return String(localized: "commandPalette.rename.workspaceDescription", defaultValue: "Choose a custom workspace name.")
             case .tab:
                 return String(localized: "commandPalette.rename.tabDescription", defaultValue: "Choose a custom tab name.")
+            case .window:
+                return String(localized: "commandPalette.rename.windowDescription", defaultValue: "Choose a custom window name.")
             }
         }
 
@@ -1924,6 +1929,8 @@ struct ContentView: View {
                 return String(localized: "commandPalette.rename.workspacePlaceholder", defaultValue: "Workspace name")
             case .tab:
                 return String(localized: "commandPalette.rename.tabPlaceholder", defaultValue: "Tab name")
+            case .window:
+                return String(localized: "commandPalette.rename.windowPlaceholder", defaultValue: "Window name")
             }
         }
     }
@@ -2595,6 +2602,7 @@ struct ContentView: View {
             updateViewModel: updateViewModel,
             onSendFeedback: presentFeedbackComposer,
             windowId: windowId,
+            onRenameWindow: { promptRenameWindow() },
             selection: $sidebarSelectionState.selection,
             selectedTabIds: $selectedTabIds,
             lastSidebarSelectionIndex: $lastSidebarSelectionIndex
@@ -5107,6 +5115,8 @@ struct ContentView: View {
             return String(localized: "commandPalette.rename.workspaceInputHint", defaultValue: "Enter a workspace name. Press Enter to rename, Escape to cancel.")
         case .tab:
             return String(localized: "commandPalette.rename.tabInputHint", defaultValue: "Enter a tab name. Press Enter to rename, Escape to cancel.")
+        case .window:
+            return String(localized: "commandPalette.rename.windowInputHint", defaultValue: "Enter a window name. Press Enter to rename, Escape to cancel. Empty clears.")
         }
     }
 
@@ -5116,6 +5126,8 @@ struct ContentView: View {
             return String(localized: "commandPalette.rename.workspaceConfirmHint", defaultValue: "Press Enter to apply this workspace name, or Escape to cancel.")
         case .tab:
             return String(localized: "commandPalette.rename.tabConfirmHint", defaultValue: "Press Enter to apply this tab name, or Escape to cancel.")
+        case .window:
+            return String(localized: "commandPalette.rename.windowConfirmHint", defaultValue: "Press Enter to apply this window name, or Escape to cancel.")
         }
     }
 
@@ -6573,6 +6585,15 @@ struct ContentView: View {
         )
         contributions.append(
             CommandPaletteCommandContribution(
+                commandId: "palette.renameWindow",
+                title: constant(String(localized: "command.renameWindow.title", defaultValue: "Rename Window…")),
+                subtitle: constant(String(localized: "command.renameWindow.subtitle", defaultValue: "Window")),
+                keywords: ["rename", "window", "name"],
+                dismissOnRun: false
+            )
+        )
+        contributions.append(
+            CommandPaletteCommandContribution(
                 commandId: "palette.editWorkspaceDescription",
                 title: constant(String(localized: "command.editWorkspaceDescription.title", defaultValue: "Edit Workspace Description…")),
                 subtitle: workspaceSubtitle,
@@ -7220,6 +7241,9 @@ struct ContentView: View {
 
         registry.register(commandId: "palette.renameWorkspace") {
             beginRenameWorkspaceFlow()
+        }
+        registry.register(commandId: "palette.renameWindow") {
+            beginRenameWindowFlow()
         }
         registry.register(commandId: "palette.editWorkspaceDescription") {
             beginWorkspaceDescriptionFlow()
@@ -8534,6 +8558,36 @@ struct ContentView: View {
         startRenameFlow(target)
     }
 
+    private func beginRenameWindowFlow() {
+        let target = CommandPaletteRenameTarget(
+            kind: .window(windowId: windowId),
+            currentName: tabManager.windowName ?? ""
+        )
+        startRenameFlow(target)
+    }
+
+    private func promptRenameWindow() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "alert.renameWindow.title", defaultValue: "Rename Window")
+        alert.informativeText = String(localized: "alert.renameWindow.message", defaultValue: "Enter a custom name for this window. Leave empty to clear.")
+        let input = NSTextField(string: tabManager.windowName ?? "")
+        input.placeholderString = String(localized: "alert.renameWindow.placeholder", defaultValue: "Window name")
+        input.frame = NSRect(x: 0, y: 0, width: 240, height: 22)
+        alert.accessoryView = input
+        alert.addButton(withTitle: String(localized: "alert.renameWindow.rename", defaultValue: "Rename"))
+        alert.addButton(withTitle: String(localized: "alert.renameWindow.cancel", defaultValue: "Cancel"))
+        let alertWindow = alert.window
+        alertWindow.initialFirstResponder = input
+        DispatchQueue.main.async {
+            alertWindow.makeFirstResponder(input)
+            input.selectText(nil)
+        }
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+        let name = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppDelegate.shared?.setWindowName(windowId: windowId, name: name.isEmpty ? nil : name)
+    }
+
     private func beginWorkspaceDescriptionFlow() {
         guard let workspace = tabManager.selectedWorkspace else {
             NSSound.beep()
@@ -8614,6 +8668,8 @@ struct ContentView: View {
                 return
             }
             workspace.setPanelCustomTitle(panelId: panelId, title: normalizedName)
+        case .window(let windowId):
+            AppDelegate.shared?.setWindowName(windowId: windowId, name: normalizedName)
         }
 
         dismissCommandPalette()
@@ -9908,6 +9964,7 @@ struct VerticalTabsSidebar: View {
     @ObservedObject var updateViewModel: UpdateViewModel
     let onSendFeedback: () -> Void
     let windowId: UUID
+    var onRenameWindow: (() -> Void)?
     @EnvironmentObject var tabManager: TabManager
     @EnvironmentObject var notificationStore: TerminalNotificationStore
     @Binding var selection: SidebarSelection
@@ -9984,7 +10041,7 @@ struct VerticalTabsSidebar: View {
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button(String(localized: "contextMenu.renameWindow", defaultValue: "Rename Window")) {
-                                // Stub — wired in step 3.4
+                                onRenameWindow?()
                             }
                             Button(String(localized: "contextMenu.copyWindowID", defaultValue: "Copy Window ID")) {
                                 let pasteboard = NSPasteboard.general
