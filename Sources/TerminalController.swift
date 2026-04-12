@@ -2693,8 +2693,8 @@ class TerminalController {
                 focused = [
                     "window_id": v2OrNull(windowId?.uuidString),
                     "window_ref": v2Ref(kind: .window, uuid: windowId),
-                    "window_name": v2OrNull(windowSummary?.name),
-                    "window_display_label": windowSummary?.displayLabel ?? "Window"
+                    "name": v2OrNull(windowSummary?.name),
+                    "display_label": windowSummary?.displayLabel ?? "Window"
                 ]
             }
         }
