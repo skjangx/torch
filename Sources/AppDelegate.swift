@@ -2224,6 +2224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let sidebarState: SidebarState
         let sidebarSelectionState: SidebarSelectionState
         weak var window: NSWindow?
+        private(set) var customName: String?
 
         init(
             windowId: UUID,
@@ -4864,6 +4865,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let isVisible: Bool
         let workspaceCount: Int
         let selectedWorkspaceId: UUID?
+        let name: String?
+        let displayLabel: String
     }
 
     struct WindowMoveTarget: Identifiable {
@@ -4898,7 +4901,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 isKeyWindow: window?.isKeyWindow ?? false,
                 isVisible: window?.isVisible ?? false,
                 workspaceCount: ctx.tabManager.tabs.count,
-                selectedWorkspaceId: ctx.tabManager.selectedTabId
+                selectedWorkspaceId: ctx.tabManager.selectedTabId,
+                name: ctx.customName,
+                displayLabel: ctx.customName ?? "Window"
             )
         }
     }

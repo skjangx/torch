@@ -353,6 +353,8 @@ struct SessionWindowSnapshot: Codable, Sendable {
     var display: SessionDisplaySnapshot?
     var tabManager: SessionTabManagerSnapshot
     var sidebar: SessionSidebarSnapshot
+    var customName: String? = nil
+    var windowId: UUID? = nil
 }
 
 struct AppSessionSnapshot: Codable, Sendable {
