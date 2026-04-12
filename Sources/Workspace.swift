@@ -759,6 +759,17 @@ extension Workspace {
             markdownSnapshot = SessionMarkdownPanelSnapshot(filePath: markdownPanel.filePath)
         }
 
+        // Save the daemon session ID so it persists across quit+reopen.
+        // This lets the macOS app reattach to the same daemon session
+        // (with running vim/btop) instead of creating a new one.
+        let daemonSID: String? = {
+            guard let terminalPanel = panel as? TerminalPanel else { return nil }
+            return DaemonTerminalBridge.computeSessionID(
+                workspaceID: self.id,
+                surfaceID: terminalPanel.surface.id
+            )
+        }()
+
         return SessionPanelSnapshot(
             id: panelId,
             type: panel.panelType,
@@ -770,6 +781,7 @@ extension Workspace {
             gitBranch: branchSnapshot,
             listeningPorts: listeningPorts,
             ttyName: ttyName,
+            daemonSessionID: daemonSID,
             terminal: terminalSnapshot,
             browser: browserSnapshot,
             markdown: markdownSnapshot
@@ -953,6 +965,14 @@ extension Workspace {
     private func applySessionPanelMetadata(_ snapshot: SessionPanelSnapshot, toPanelId panelId: UUID) {
         if let title = snapshot.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
             panelTitles[panelId] = title
+        }
+
+        // Restore the daemon session ID so the surface can reattach to
+        // the same daemon session (preserving running TUIs).
+        if let savedSID = snapshot.daemonSessionID,
+           let terminalPanel = panels[panelId] as? TerminalPanel {
+            terminalPanel.savedDaemonSessionID = savedSID
+            terminalPanel.surface.savedDaemonSessionID = savedSID
         }
 
         setPanelCustomTitle(panelId: panelId, title: snapshot.customTitle)

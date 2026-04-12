@@ -251,6 +251,11 @@ struct SessionPanelSnapshot: Codable, Sendable {
     var gitBranch: SessionGitBranchSnapshot?
     var listeningPorts: [Int]
     var ttyName: String?
+    /// Daemon session ID for this panel. Persisted so the macOS app can
+    /// reattach to the same daemon session after quit+reopen (when the
+    /// daemon was kept alive). Without this, new surface UUIDs produce
+    /// new session IDs and the old sessions with running TUIs are orphaned.
+    var daemonSessionID: String?
     var terminal: SessionTerminalPanelSnapshot?
     var browser: SessionBrowserPanelSnapshot?
     var markdown: SessionMarkdownPanelSnapshot?

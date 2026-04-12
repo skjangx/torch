@@ -3364,6 +3364,10 @@ final class TerminalSurface: Identifiable, ObservableObject {
     let id: UUID
     private(set) var tabId: UUID
     var daemonBridge: DaemonTerminalBridge?
+    /// Saved daemon session ID from a previous app session. When set,
+    /// the surface reattaches to this session instead of computing a
+    /// new one from the surface UUID.
+    var savedDaemonSessionID: String?
     /// Port ordinal for CMUX_PORT range assignment
     var portOrdinal: Int = 0
     /// Snapshotted once per app session so all workspaces use consistent values
@@ -4242,7 +4246,10 @@ final class TerminalSurface: Identifiable, ObservableObject {
         let daemonPath = MobileDaemonBridgeInline.shared.daemonSocketPath
         NSLog("📱 surface.checkDaemon running=%d path=%@", daemonRunning ? 1 : 0, daemonPath ?? "nil")
         if let daemonSocket = daemonPath, daemonRunning {
-            let sessionID = DaemonTerminalBridge.computeSessionID(workspaceID: tabId, surfaceID: id)
+            // Prefer the saved daemon session ID from a previous app session
+            // (quit with "Keep Daemon"). This lets us reattach to the same
+            // daemon session, preserving running TUIs like vim/btop.
+            let sessionID = savedDaemonSessionID ?? DaemonTerminalBridge.computeSessionID(workspaceID: tabId, surfaceID: id)
             let shell = (env["SHELL"]?.isEmpty == false ? env["SHELL"] : nil)
                 ?? getenv("SHELL").map { String(cString: $0) }
                 ?? ProcessInfo.processInfo.environment["SHELL"]
