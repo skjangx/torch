@@ -2224,7 +2224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let sidebarState: SidebarState
         let sidebarSelectionState: SidebarSelectionState
         weak var window: NSWindow?
-        private(set) var customName: String?
+        var customName: String?
 
         init(
             windowId: UUID,
@@ -2420,6 +2420,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 #endif
 
     private var mainWindowContexts: [ObjectIdentifier: MainWindowContext] = [:]
+    /// Tracks window creation order for deterministic "Window N" numbering.
+    /// `mainWindowContexts` is a dictionary with no stable ordering.
+    private var mainWindowCreationOrder: [UUID] = []
     private var mainWindowControllers: [MainWindowController] = []
 
     /// Tracks the cascade point for new windows, matching Ghostty's upstream algorithm.
@@ -3945,6 +3948,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
 #endif
         context.customName = snapshot.customName
+        context.tabManager.setWindowName(snapshot.customName)
 #if DEBUG
         dlog("window.restore name=\(snapshot.customName ?? "nil") id=\(context.windowId) path=apply")
 #endif
@@ -3964,6 +3968,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             )
 #endif
         }
+        refreshAllWindowDisplayLabels()
     }
 
     private func resolvedWindowFrame(from snapshot: SessionWindowSnapshot?) -> NSRect? {
@@ -4850,12 +4855,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         commandPaletteSelectionByWindowId[windowId] = 0
         commandPaletteSnapshotByWindowId[windowId] = .empty
 
+        // Track creation order for "Window N" numbering (dedupe — registerMainWindow
+        // can be called multiple times for the same window via ContentView's WindowAccessor).
+        if !mainWindowCreationOrder.contains(windowId) {
+            mainWindowCreationOrder.append(windowId)
+        }
+
 #if DEBUG
         dlog(
             "mainWindow.register windowId=\(String(windowId.uuidString.prefix(8))) window={\(debugWindowToken(window))} manager=\(debugManagerToken(tabManager)) priorActiveMgr=\(priorManagerToken) \(debugShortcutRouteSnapshot())"
         )
 #endif
         notifyMainWindowContextsDidChange()
+        refreshAllWindowDisplayLabels()
         if window.isKeyWindow {
             setActiveMainWindow(window)
         }
@@ -4910,8 +4922,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 workspaceCount: ctx.tabManager.tabs.count,
                 selectedWorkspaceId: ctx.tabManager.selectedTabId,
                 name: ctx.customName,
-                displayLabel: ctx.customName ?? "Window"
+                displayLabel: ctx.tabManager.windowDisplayLabel
             )
+        }
+    }
+
+    func setWindowName(windowId: UUID, name: String?) {
+        guard let context = mainWindowContexts.values.first(where: { $0.windowId == windowId }) else { return }
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        context.customName = resolved
+        context.tabManager.setWindowName(resolved)
+        refreshAllWindowDisplayLabels()
+    }
+
+    func refreshAllWindowDisplayLabels() {
+        var unnamedIndex = 1
+        for windowId in mainWindowCreationOrder {
+            guard let context = mainWindowContexts.values.first(where: { $0.windowId == windowId }) else { continue }
+            let label: String
+            if let customName = context.customName {
+                label = customName
+            } else {
+                label = "Window \(unnamedIndex)"
+                unnamedIndex += 1
+            }
+            context.tabManager.setWindowDisplayLabel(label)
         }
     }
 
@@ -6174,6 +6210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         for key in contextKeys {
             mainWindowContexts.removeValue(forKey: key)
         }
+        mainWindowCreationOrder.removeAll { $0 == context.windowId }
         notifyMainWindowContextsDidChange()
 
         commandPaletteVisibilityByWindowId.removeValue(forKey: context.windowId)
@@ -7200,11 +7237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             sidebarState: sidebarState,
             sidebarSelectionState: sidebarSelectionState
         )
-        // Restore custom name from snapshot AFTER registration creates the context
-        // but BEFORE any label refresh (wired in step 1.3).
+        // Restore custom name from snapshot AFTER registration creates the context.
         if let restoredName = sessionWindowSnapshot?.customName {
             let key = ObjectIdentifier(window)
             mainWindowContexts[key]?.customName = restoredName
+            tabManager.setWindowName(restoredName)
+            refreshAllWindowDisplayLabels()
 #if DEBUG
             dlog("window.restore name=\(restoredName) id=\(windowId) path=create")
 #endif
@@ -12949,6 +12987,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // is removed when the last window closes.
         persistWindowGeometry(from: window)
         guard let removed = unregisterMainWindowContext(for: window) else { return }
+        mainWindowCreationOrder.removeAll { $0 == removed.windowId }
         commandPaletteVisibilityByWindowId.removeValue(forKey: removed.windowId)
         commandPalettePendingOpenByWindowId.removeValue(forKey: removed.windowId)
         commandPaletteRecentRequestAtByWindowId.removeValue(forKey: removed.windowId)
@@ -12986,6 +13025,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 TerminalController.shared.setActiveTabManager(nil)
             }
         }
+
+        refreshAllWindowDisplayLabels()
 
         // During app termination we already persisted a full snapshot (with scrollback)
         // in applicationShouldTerminate/applicationWillTerminate. Saving again here would

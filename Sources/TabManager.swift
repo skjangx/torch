@@ -864,6 +864,12 @@ class TabManager: ObservableObject {
     /// Used to apply title updates to the correct window instead of NSApp.keyWindow.
     weak var window: NSWindow?
 
+    /// User-assigned window name (nil when unnamed). Set by AppDelegate.setWindowName().
+    @Published var windowName: String?
+    /// Computed display label — custom name or "Window N" with contiguous numbering.
+    /// Set by AppDelegate.refreshAllWindowDisplayLabels().
+    @Published var windowDisplayLabel: String = "Window 1"
+
     @Published var tabs: [Workspace] = []
     @Published private(set) var isWorkspaceCycleHot: Bool = false
     @Published private(set) var pendingBackgroundWorkspaceLoadIds: Set<UUID> = []
@@ -4625,6 +4631,16 @@ class TabManager: ObservableObject {
         if selectedTabId == tabId {
             updateWindowTitle(for: tab)
         }
+    }
+
+    func setWindowName(_ name: String?) {
+        windowName = name
+        updateWindowTitleForSelectedTab()
+    }
+
+    func setWindowDisplayLabel(_ label: String) {
+        windowDisplayLabel = label
+        updateWindowTitleForSelectedTab()
     }
 
     private func updateWindowTitleForSelectedTab() {
