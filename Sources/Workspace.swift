@@ -768,14 +768,18 @@ extension Workspace {
         }
 
         // Save the daemon session ID so it persists across quit+reopen.
-        // This lets the macOS app reattach to the same daemon session
-        // (with running vim/btop) instead of creating a new one.
+        // Prefer the saved ID (from a previous restore) over computing a
+        // new one. Without this, each restart cycle would save the
+        // computed ID (from the new surface UUID) instead of the original
+        // daemon session ID, breaking session persistence.
         let daemonSID: String? = {
             guard let terminalPanel = panel as? TerminalPanel else { return nil }
-            return DaemonTerminalBridge.computeSessionID(
-                workspaceID: self.id,
-                surfaceID: terminalPanel.surface.id
-            )
+            return terminalPanel.surface.savedDaemonSessionID
+                ?? terminalPanel.surface.daemonBridge?.sessionID
+                ?? DaemonTerminalBridge.computeSessionID(
+                    workspaceID: self.id,
+                    surfaceID: terminalPanel.surface.id
+                )
         }()
 
         return SessionPanelSnapshot(
