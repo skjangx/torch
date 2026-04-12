@@ -780,6 +780,23 @@ final class TabManagerPullRequestProbeTests: XCTestCase {
 
 @MainActor
 final class TabManagerCloseWorkspacesWithConfirmationTests: XCTestCase {
+    private var originalWarnBeforeClosingTabPreference: Any?
+
+    override func setUp() {
+        super.setUp()
+        originalWarnBeforeClosingTabPreference = UserDefaults.standard.object(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        UserDefaults.standard.removeObject(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+    }
+
+    override func tearDown() {
+        if let originalWarnBeforeClosingTabPreference {
+            UserDefaults.standard.set(originalWarnBeforeClosingTabPreference, forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        }
+        super.tearDown()
+    }
+
     func testCloseWorkspacesWithConfirmationPromptsOnceAndClosesAcceptedWorkspaces() {
         let manager = TabManager()
         let second = manager.addWorkspace()
@@ -883,6 +900,27 @@ final class TabManagerCloseWorkspacesWithConfirmationTests: XCTestCase {
         XCTAssertEqual(prompts.first?.message, expectedMessage)
         XCTAssertEqual(prompts.first?.acceptCmdD, false)
         XCTAssertEqual(manager.tabs.map(\.title), ["Alpha", "Beta", "Gamma"])
+    }
+
+    func testCloseWorkspacesWithConfirmationSkipsPromptWhenWarnBeforeClosingTabIsDisabled() {
+        let manager = TabManager()
+        let second = manager.addWorkspace()
+        let third = manager.addWorkspace()
+        manager.setCustomTitle(tabId: manager.tabs[0].id, title: "Alpha")
+        manager.setCustomTitle(tabId: second.id, title: "Beta")
+        manager.setCustomTitle(tabId: third.id, title: "Gamma")
+
+        var prompts: [(title: String, message: String, acceptCmdD: Bool)] = []
+        manager.confirmCloseHandler = { title, message, acceptCmdD in
+            prompts.append((title, message, acceptCmdD))
+            return false
+        }
+
+        UserDefaults.standard.set(false, forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        manager.closeWorkspacesWithConfirmation([manager.tabs[0].id, second.id], allowPinned: true)
+
+        XCTAssertEqual(prompts.count, 0, "Disabling the close warning should skip the multi-workspace confirmation dialog")
+        XCTAssertEqual(manager.tabs.map(\.title), ["Gamma"])
     }
 }
 

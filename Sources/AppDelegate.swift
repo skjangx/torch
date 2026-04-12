@@ -5919,6 +5919,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func confirmCloseMainWindow(_ window: NSWindow) -> Bool {
+        guard CloseTabWarningSettings.isEnabled() else { return true }
 #if DEBUG
         if let debugCloseMainWindowConfirmationHandler {
             return debugCloseMainWindowConfirmationHandler(window)

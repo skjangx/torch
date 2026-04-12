@@ -17,6 +17,7 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
     private var savedShortcutsByAction: [KeyboardShortcutSettings.Action: StoredShortcut] = [:]
     private var actionsWithPersistedShortcut: Set<KeyboardShortcutSettings.Action> = []
     private var originalSettingsFileStore: KeyboardShortcutSettingsFileStore!
+    private var originalWarnBeforeClosingTabPreference: Any?
 
     private func makeKeyEvent(
         modifierFlags: NSEvent.ModifierFlags,
@@ -56,6 +57,8 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
             }
         )
         originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
+        originalWarnBeforeClosingTabPreference = UserDefaults.standard.object(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        UserDefaults.standard.removeObject(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
         KeyboardShortcutSettings.resetAll()
     }
 
@@ -73,6 +76,11 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
             } else {
                 KeyboardShortcutSettings.resetShortcut(for: action)
             }
+        }
+        if let originalWarnBeforeClosingTabPreference {
+            UserDefaults.standard.set(originalWarnBeforeClosingTabPreference, forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
         }
         super.tearDown()
     }
@@ -1329,6 +1337,48 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
 
         XCTAssertNil(self.window(withId: windowId), "Confirming Cmd+Ctrl+W should close the window")
+    }
+
+    func testCmdCtrlWSkipsPromptWhenWarnBeforeClosingTabIsDisabled() {
+        guard let appDelegate = AppDelegate.shared else {
+            XCTFail("Expected AppDelegate.shared")
+            return
+        }
+
+        let windowId = appDelegate.createMainWindow()
+        guard let targetWindow = window(withId: windowId) else {
+            XCTFail("Expected test window")
+            return
+        }
+
+        var promptCallCount = 0
+        appDelegate.debugCloseMainWindowConfirmationHandler = { _ in
+            promptCallCount += 1
+            return false
+        }
+
+        UserDefaults.standard.set(false, forKey: CloseTabWarningSettings.warnBeforeClosingTabKey)
+
+        guard let event = makeKeyDownEvent(
+            key: "w",
+            modifiers: [.command, .control],
+            keyCode: 13,
+            windowNumber: targetWindow.windowNumber
+        ) else {
+            XCTFail("Failed to construct Cmd+Ctrl+W event")
+            return
+        }
+
+#if DEBUG
+        XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: event))
+#else
+        XCTFail("debugHandleCustomShortcut is only available in DEBUG")
+#endif
+
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertEqual(promptCallCount, 0, "Disabling the close warning should skip the window confirmation dialog")
+        XCTAssertNil(self.window(withId: windowId), "Cmd+Ctrl+W should close immediately when the close warning is disabled")
     }
 
     // NOTE: This test is skipped in CI via -skip-testing in ci.yml because closing

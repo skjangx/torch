@@ -3989,6 +3989,7 @@ class TabManager: ObservableObject {
     func selectTab(_ tab: Workspace) { selectWorkspace(tab) }
 
     private func confirmClose(title: String, message: String, acceptCmdD: Bool) -> Bool {
+        guard CloseTabWarningSettings.isEnabled() else { return true }
         if let confirmCloseHandler {
             return confirmCloseHandler(title, message, acceptCmdD)
         }
