@@ -2069,6 +2069,8 @@ class TerminalController {
             return v2Result(id: id, self.v2WindowCreate(params: params))
         case "window.close":
             return v2Result(id: id, self.v2WindowClose(params: params))
+        case "window.rename":
+            return v2Result(id: id, self.v2WindowRename(params: params))
 
         // Workspaces
         case "workspace.list":
@@ -2463,6 +2465,7 @@ class TerminalController {
             "window.focus",
             "window.create",
             "window.close",
+            "window.rename",
             "workspace.list",
             "workspace.create",
             "workspace.select",
@@ -3310,6 +3313,55 @@ class TerminalController {
                 "window_id": windowId.uuidString,
                 "window_ref": v2Ref(kind: .window, uuid: windowId)
             ])
+    }
+
+    private func v2WindowRename(params: [String: Any]) -> V2CallResult {
+        // window_id is optional — defaults to the current/focused window.
+        let windowId: UUID? = v2UUID(params, "window_id") ?? v2ResolveWindowId(tabManager: v2ResolveTabManager(params: params))
+        guard let windowId else {
+            return .err(
+                code: "unavailable",
+                message: String(localized: "socket.windowRename.noWindow", defaultValue: "No window available"),
+                data: nil
+            )
+        }
+
+        // name: nil or empty string clears the custom name.
+        let nameRaw = v2String(params, "name")
+        let name: String? = {
+            guard let raw = nameRaw else { return nil }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }()
+
+        var displayLabel: String?
+        var found = false
+        v2MainSync {
+            guard let appDelegate = AppDelegate.shared else { return }
+            let summaries = appDelegate.listMainWindowSummaries()
+            guard summaries.contains(where: { $0.windowId == windowId }) else { return }
+            appDelegate.setWindowName(windowId: windowId, name: name)
+            displayLabel = appDelegate.listMainWindowSummaries().first(where: { $0.windowId == windowId })?.displayLabel
+            found = true
+        }
+
+        guard found else {
+            return .err(
+                code: "not_found",
+                message: String(localized: "socket.windowRename.notFound", defaultValue: "Window not found"),
+                data: [
+                    "window_id": windowId.uuidString,
+                    "window_ref": v2Ref(kind: .window, uuid: windowId)
+                ]
+            )
+        }
+
+        return .ok([
+            "window_id": windowId.uuidString,
+            "window_ref": v2Ref(kind: .window, uuid: windowId),
+            "name": v2OrNull(name),
+            "display_label": displayLabel ?? "Window"
+        ])
     }
 
     // MARK: - V2 Workspace Methods
