@@ -45,7 +45,7 @@ final class MainWindowHostingView<Content: View>: NSHostingView<Content> {
 }
 
 private enum CmuxThemeNotifications {
-    static let reloadConfig = Notification.Name("com.cmuxterm.themes.reload-config")
+    static let reloadConfig = Notification.Name("com.torch-terminal.themes.reload-config")
 }
 
 func isCommandPaletteFocusStealingTerminalOrBrowserResponder(_ responder: NSResponder) -> Bool {
@@ -2436,11 +2436,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var sessionAutosaveTickInFlight = false
     private var sessionAutosaveDeferredRetryPending = false
     private let sessionPersistenceQueue = DispatchQueue(
-        label: "com.cmuxterm.app.sessionPersistence",
+        label: "com.torch-terminal.app.sessionPersistence",
         qos: .utility
     )
     private nonisolated static let launchServicesRegistrationQueue = DispatchQueue(
-        label: "com.cmuxterm.app.launchServicesRegistration",
+        label: "com.torch-terminal.app.launchServicesRegistration",
         qos: .utility
     )
     private nonisolated static func enqueueLaunchServicesRegistrationWork(_ work: @escaping @Sendable () -> Void) {

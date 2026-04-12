@@ -4660,7 +4660,7 @@ class TabManager: ObservableObject {
     }
 
     private func windowTitle(for tab: Workspace?) -> String {
-        guard let tab else { return "cmux" }
+        guard let tab else { return "Torch" }
         let trimmedTitle = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedTitle.isEmpty {
             return trimmedTitle

@@ -416,7 +416,7 @@ enum SessionPersistenceStore {
         }
         let bundleId = (bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
             ? bundleIdentifier!
-            : "com.cmuxterm.app"
+            : "com.torch-terminal.app"
         let safeBundleId = bundleId.replacingOccurrences(
             of: "[^A-Za-z0-9._-]",
             with: "_",
