@@ -2435,6 +2435,22 @@ struct CMUXCLI {
             let payload = try client.sendV2(method: "workspace.rename", params: params)
             printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat, kinds: ["workspace"]))
 
+        case "rename-os-window":
+            let (winArg, rem0) = parseOption(commandArgs, name: "--window")
+            let nameArgs = rem0.dropFirst(rem0.first == "--" ? 1 : 0)
+            let name = nameArgs.joined(separator: " ")
+            var params: [String: Any] = [:]
+            if let winArg {
+                let winId = try normalizeWindowHandle(winArg, client: client)
+                if let winId { params["window_id"] = winId }
+            }
+            // Empty string clears the name — do not reject empty input.
+            if !name.isEmpty {
+                params["name"] = name
+            }
+            let payload = try client.sendV2(method: "window.rename", params: params)
+            printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat, kinds: ["window"]))
+
         case "current-workspace":
             let response = try client.sendV2(method: "workspace.current")
             if jsonOutput {
@@ -7517,6 +7533,21 @@ struct CMUXCLI {
             Example:
               cmux rename-workspace "backend logs"
               cmux rename-window --workspace workspace:2 "agent run"
+            """
+        case "rename-os-window":
+            return """
+            Usage: cmux rename-os-window [--window <id|ref|index>] [--] <name>
+
+            Rename a window. Defaults to the current window.
+            Pass an empty string to clear the custom name.
+
+            Flags:
+              --window <id|ref|index>   Window to rename (default: current)
+
+            Example:
+              cmux rename-os-window "Backend"
+              cmux rename-os-window --window 1 "Frontend"
+              cmux rename-os-window ""
             """
         case "current-workspace":
             return """
@@ -14398,6 +14429,7 @@ struct CMUXCLI {
           select-workspace --workspace <id|ref>
           rename-workspace [--workspace <id|ref>] <title>
           rename-window [--workspace <id|ref>] <title>
+          rename-os-window [--window <id|ref>] <name>
           current-workspace
           read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]
           send [--workspace <id|ref>] [--surface <id|ref>] <text>
