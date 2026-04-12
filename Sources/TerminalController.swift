@@ -3329,7 +3329,16 @@ class TerminalController {
 
     private func v2WindowRename(params: [String: Any]) -> V2CallResult {
         // window_id is optional — defaults to the current/focused window.
-        let windowId: UUID? = v2UUID(params, "window_id") ?? v2ResolveWindowId(tabManager: v2ResolveTabManager(params: params))
+        // But if the key is present and invalid, reject with invalid_params (don't silently fall back).
+        let windowId: UUID?
+        if params["window_id"] != nil {
+            guard let resolved = v2UUID(params, "window_id") else {
+                return .err(code: "invalid_params", message: "Invalid window_id", data: nil)
+            }
+            windowId = resolved
+        } else {
+            windowId = v2ResolveWindowId(tabManager: v2ResolveTabManager(params: params))
+        }
         guard let windowId else {
             return .err(code: "unavailable", message: "No window available", data: nil)
         }

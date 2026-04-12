@@ -2446,6 +2446,10 @@ struct CMUXCLI {
             if let winArg {
                 let winId = try normalizeWindowHandle(winArg, client: client)
                 if let winId { params["window_id"] = winId }
+            } else if windowId == nil, let envWs = ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] {
+                // Default routing: use the caller's workspace to find its window.
+                let wsId = try normalizeWorkspaceHandle(envWs, client: client)
+                if let wsId { params["workspace_id"] = wsId }
             }
             // Empty string clears the name — do not reject empty input.
             if !name.isEmpty {
