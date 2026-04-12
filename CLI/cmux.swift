@@ -2438,6 +2438,9 @@ struct CMUXCLI {
         case "rename-os-window":
             let (winArg, rem0) = parseOption(commandArgs, name: "--window")
             let nameArgs = rem0.dropFirst(rem0.first == "--" ? 1 : 0)
+            guard !nameArgs.isEmpty else {
+                throw CLIError(message: "rename-os-window requires a name argument (use \"\" to clear)")
+            }
             let name = nameArgs.joined(separator: " ")
             var params: [String: Any] = [:]
             if let winArg {

@@ -2676,8 +2676,8 @@ class TerminalController {
                 focused = [
                     "window_id": v2OrNull(windowId?.uuidString),
                     "window_ref": v2Ref(kind: .window, uuid: windowId),
-                    "window_name": v2OrNull(windowSummary?.name),
-                    "window_display_label": windowSummary?.displayLabel ?? "Window",
+                    "name": v2OrNull(windowSummary?.name),
+                    "display_label": windowSummary?.displayLabel ?? "Window",
                     "workspace_id": wsId.uuidString,
                     "workspace_ref": v2Ref(kind: .workspace, uuid: wsId),
                     "pane_id": v2OrNull(paneUUID?.uuidString),
@@ -3331,37 +3331,27 @@ class TerminalController {
         // window_id is optional — defaults to the current/focused window.
         let windowId: UUID? = v2UUID(params, "window_id") ?? v2ResolveWindowId(tabManager: v2ResolveTabManager(params: params))
         guard let windowId else {
-            return .err(
-                code: "unavailable",
-                message: String(localized: "socket.windowRename.noWindow", defaultValue: "No window available"),
-                data: nil
-            )
+            return .err(code: "unavailable", message: "No window available", data: nil)
         }
 
         // name: nil or empty string clears the custom name.
+        // Trim/normalize is handled by AppDelegate.setWindowName.
         let nameRaw = v2String(params, "name")
-        let name: String? = {
-            guard let raw = nameRaw else { return nil }
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }()
 
+        var resolvedName: String?
         var displayLabel: String?
         var found = false
         v2MainSync {
-            guard let appDelegate = AppDelegate.shared else { return }
-            let summaries = appDelegate.listMainWindowSummaries()
-            guard summaries.contains(where: { $0.windowId == windowId }) else { return }
-            appDelegate.setWindowName(windowId: windowId, name: name)
-            displayLabel = appDelegate.listMainWindowSummaries().first(where: { $0.windowId == windowId })?.displayLabel
+            guard let appDelegate = AppDelegate.shared,
+                  let tm = appDelegate.tabManagerFor(windowId: windowId) else { return }
+            appDelegate.setWindowName(windowId: windowId, name: nameRaw)
+            resolvedName = tm.windowName
+            displayLabel = tm.windowDisplayLabel
             found = true
         }
 
         guard found else {
-            return .err(
-                code: "not_found",
-                message: String(localized: "socket.windowRename.notFound", defaultValue: "Window not found"),
-                data: [
+            return .err(code: "not_found", message: "Window not found", data: [
                     "window_id": windowId.uuidString,
                     "window_ref": v2Ref(kind: .window, uuid: windowId)
                 ]
@@ -3371,7 +3361,7 @@ class TerminalController {
         return .ok([
             "window_id": windowId.uuidString,
             "window_ref": v2Ref(kind: .window, uuid: windowId),
-            "name": v2OrNull(name),
+            "name": v2OrNull(resolvedName),
             "display_label": displayLabel ?? "Window"
         ])
     }
