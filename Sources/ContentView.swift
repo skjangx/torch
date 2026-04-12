@@ -2793,12 +2793,17 @@ struct ContentView: View {
     private func updateTitlebarText() {
         guard let selectedId = tabManager.selectedTabId,
               let tab = tabManager.tabs.first(where: { $0.id == selectedId }) else {
-            if !titlebarText.isEmpty {
-                titlebarText = ""
+            let fallback = tabManager.windowDisplayLabel
+            if titlebarText != fallback {
+                titlebarText = fallback
             }
             return
         }
-        let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = TabManager.formatWindowTitle(
+            displayLabel: tabManager.windowDisplayLabel,
+            workspaceTitle: tab.title,
+            workspaceDirectory: tab.currentDirectory
+        )
         if titlebarText != title {
             titlebarText = title
         }
@@ -3061,6 +3066,10 @@ struct ContentView: View {
                   tabId == tabManager.selectedTabId else { return }
             completeWorkspaceHandoffIfNeeded(focusedTabId: tabId, reason: "focus")
             attemptCommandPaletteFocusRestoreIfNeeded()
+            scheduleTitlebarTextRefresh()
+        })
+
+        view = AnyView(view.onChange(of: tabManager.windowDisplayLabel) { _, _ in
             scheduleTitlebarTextRefresh()
         })
 

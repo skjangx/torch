@@ -4659,14 +4659,25 @@ class TabManager: ObservableObject {
         targetWindow.title = title
     }
 
-    private func windowTitle(for tab: Workspace?) -> String {
-        guard let tab else { return "Torch" }
-        let trimmedTitle = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    static func formatWindowTitle(displayLabel: String, workspaceTitle: String, workspaceDirectory: String) -> String {
+        let trimmedTitle = workspaceTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let workspacePart: String
         if !trimmedTitle.isEmpty {
-            return trimmedTitle
+            workspacePart = trimmedTitle
+        } else {
+            let trimmedDirectory = workspaceDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+            workspacePart = trimmedDirectory.isEmpty ? "Torch" : trimmedDirectory
         }
-        let trimmedDirectory = tab.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedDirectory.isEmpty ? "cmux" : trimmedDirectory
+        return "\(displayLabel) — \(workspacePart)"
+    }
+
+    private func windowTitle(for tab: Workspace?) -> String {
+        guard let tab else { return windowDisplayLabel }
+        return Self.formatWindowTitle(
+            displayLabel: windowDisplayLabel,
+            workspaceTitle: tab.title,
+            workspaceDirectory: tab.currentDirectory
+        )
     }
 
     func focusTab(_ tabId: UUID, surfaceId: UUID? = nil, suppressFlash: Bool = false) {
