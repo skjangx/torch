@@ -9969,27 +9969,32 @@ struct VerticalTabsSidebar: View {
                             .frame(height: trafficLightPadding)
 
                         // Window name header
-                        Text(tabManager.windowDisplayLabel)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 4)
-                            .contextMenu {
-                                Button(String(localized: "contextMenu.renameWindow", defaultValue: "Rename Window")) {
-                                    // Stub — wired in step 3.4
-                                }
-                                Button(String(localized: "contextMenu.copyWindowID", defaultValue: "Copy Window ID")) {
-                                    let pasteboard = NSPasteboard.general
-                                    pasteboard.clearContents()
-                                    pasteboard.setString(windowId.uuidString, forType: .string)
-                                }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(tabManager.windowDisplayLabel)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color(nsColor: NSColor(white: 0.94, alpha: 1.0)))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(windowId.uuidString.prefix(8).uppercased())
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(nsColor: NSColor(white: 0.33, alpha: 1.0)))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.init(top: 10, leading: 14, bottom: 8, trailing: 14))
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button(String(localized: "contextMenu.renameWindow", defaultValue: "Rename Window")) {
+                                // Stub — wired in step 3.4
                             }
+                            Button(String(localized: "contextMenu.copyWindowID", defaultValue: "Copy Window ID")) {
+                                let pasteboard = NSPasteboard.general
+                                pasteboard.clearContents()
+                                pasteboard.setString(windowId.uuidString, forType: .string)
+                            }
+                        }
 
                         Divider()
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 10)
                             .padding(.bottom, 4)
 
                         // Workspaces are bounded, so prefer a non-lazy stack here.
