@@ -3,6 +3,7 @@ const local_peer_auth = @import("local_peer_auth.zig");
 const server_core = @import("server_core.zig");
 const session_service = @import("session_service.zig");
 const serve_ws = @import("serve_ws.zig");
+const pty_host = @import("pty_host.zig");
 
 pub const Config = struct {
     socket_path: []const u8,
@@ -15,6 +16,14 @@ pub fn serve(cfg: Config) !void {
 
     try ensurePrivateSocketDir(cfg.socket_path);
     try removeStaleSocket(cfg.socket_path);
+
+    // Create a new process group so the cleanup signal handler can kill
+    // all children without affecting the parent (macOS app / shell).
+    // Then install signal handlers to kill the group on SIGTERM/SIGINT.
+    // Without this, orphaned shells accumulate across daemon restarts
+    // and exhaust the system PTY limit (kern.tty.ptmx_max).
+    std.posix.setpgid(0, 0) catch {};
+    installCleanupSignalHandlers();
 
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
@@ -147,6 +156,30 @@ fn statPath(path: []const u8) !std.fs.File.Stat {
 fn deleteSocket(path: []const u8) !void {
     if (std.fs.path.isAbsolute(path)) return std.fs.deleteFileAbsolute(path);
     return std.fs.cwd().deleteFile(path);
+}
+
+/// Install signal handlers for SIGTERM/SIGINT/SIGHUP that kill the
+/// entire process group. This ensures child shells from forkpty are
+/// cleaned up when the daemon is killed, preventing PTY leaks.
+fn installCleanupSignalHandlers() void {
+    const act = std.c.Sigaction{
+        .handler = .{ .handler = cleanupAndExit },
+        .mask = @as(u32, 0),
+        .flags = 0,
+    };
+    _ = std.c.sigaction(std.posix.SIG.TERM, &act, null);
+    _ = std.c.sigaction(std.posix.SIG.INT, &act, null);
+    _ = std.c.sigaction(std.posix.SIG.HUP, &act, null);
+}
+
+fn cleanupAndExit(_: c_int) callconv(.c) noreturn {
+    // Kill all registered child processes (shells from forkpty).
+    // Children are in their own sessions (setsid via login_tty),
+    // so killing our process group alone won't reach them.
+    pty_host.killAllChildren();
+    // Also kill our process group for any other children.
+    _ = std.c.kill(0, std.posix.SIG.KILL);
+    std.posix.exit(0);
 }
 
 fn chmodPath(path: []const u8, mode: std.posix.mode_t) !void {

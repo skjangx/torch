@@ -2,6 +2,40 @@ const std = @import("std");
 const cross = @import("cross.zig");
 const terminal_session = @import("terminal_session.zig");
 
+/// Global child PID registry for signal-safe cleanup. forkpty children
+/// call setsid() so they're not in the daemon's process group. The
+/// signal handler iterates this array to kill them on SIGTERM.
+const max_children = 512;
+var child_pids: [max_children]std.posix.pid_t = .{0} ** max_children;
+var child_count: usize = 0;
+
+pub fn registerChild(pid: std.posix.pid_t) void {
+    if (child_count < max_children) {
+        child_pids[child_count] = pid;
+        child_count += 1;
+    }
+}
+
+pub fn unregisterChild(pid: std.posix.pid_t) void {
+    for (0..child_count) |i| {
+        if (child_pids[i] == pid) {
+            child_pids[i] = child_pids[child_count - 1];
+            child_count -= 1;
+            return;
+        }
+    }
+}
+
+/// Kill all registered child processes. Safe to call from signal handlers.
+pub fn killAllChildren() void {
+    for (0..child_count) |i| {
+        const pid = child_pids[i];
+        if (pid > 0) {
+            _ = std.c.kill(pid, std.posix.SIG.KILL);
+        }
+    }
+}
+
 pub const PtyHost = struct {
     alloc: std.mem.Allocator,
     master_fd: std.posix.fd_t,
@@ -41,6 +75,8 @@ pub const PtyHost = struct {
         const flags = try std.posix.fcntl(master_fd, std.posix.F.GETFL, 0);
         _ = try std.posix.fcntl(master_fd, std.posix.F.SETFL, flags | @as(u32, @bitCast(std.posix.O{ .NONBLOCK = true })));
 
+        registerChild(pid);
+
         return .{
             .alloc = alloc,
             .master_fd = master_fd,
@@ -59,6 +95,7 @@ pub const PtyHost = struct {
         std.posix.kill(-self.pid, std.posix.SIG.KILL) catch {};
         std.posix.kill(self.pid, std.posix.SIG.KILL) catch {};
         _ = std.posix.waitpid(self.pid, 0);
+        unregisterChild(self.pid);
     }
 
     pub fn write(self: *PtyHost, data: []const u8) !void {
