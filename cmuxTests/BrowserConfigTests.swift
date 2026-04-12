@@ -1501,6 +1501,18 @@ final class BrowserPopupDecisionTests: XCTestCase {
         )
     }
 
+    func testOtherNavigationKeyDownGestureDoesNotCreatePopup() {
+        XCTAssertFalse(
+            browserNavigationShouldCreatePopup(
+                navigationType: .other,
+                modifierFlags: [],
+                buttonNumber: 0,
+                currentEventType: .keyDown,
+                currentEventButtonNumber: 0
+            )
+        )
+    }
+
     func testOtherNavigationPlainLeftClickCreatesPopup() {
         XCTAssertTrue(
             browserNavigationShouldCreatePopup(
