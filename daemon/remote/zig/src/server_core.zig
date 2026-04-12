@@ -818,6 +818,26 @@ fn handleWorkspaceSync(service: *session_service.Service, req: *const json_rpc.R
         }
         const session_ids = try session_ids_list.toOwnedSlice(alloc);
 
+        // Parse per-pane metadata (richer than bare session_ids).
+        var panes_list: std.ArrayList(workspace_registry.Registry.SyncPane) = .empty;
+        if (obj.get("panes")) |panes_val| {
+            if (panes_val == .array) {
+                for (panes_val.array.items) |pane_item| {
+                    if (pane_item != .object) continue;
+                    const pane_obj = pane_item.object;
+                    const pane_sid = if (pane_obj.get("session_id")) |v| (if (v == .string) v.string else null) else null;
+                    if (pane_sid) |sid| {
+                        try panes_list.append(alloc, .{
+                            .session_id = sid,
+                            .title = if (pane_obj.get("title")) |v| (if (v == .string) v.string else "") else "",
+                            .directory = if (pane_obj.get("directory")) |v| (if (v == .string) v.string else "") else "",
+                        });
+                    }
+                }
+            }
+        }
+        const sync_panes = try panes_list.toOwnedSlice(alloc);
+
         try sync_workspaces.append(alloc, .{
             .id = id.?,
             .title = title.?,
@@ -829,6 +849,7 @@ fn handleWorkspaceSync(service: *session_service.Service, req: *const json_rpc.R
             .pinned = pinned,
             .session_id = if (obj.get("session_id")) |v| (if (v == .string) v.string else null) else null,
             .session_ids = session_ids,
+            .panes = sync_panes,
         });
     }
 

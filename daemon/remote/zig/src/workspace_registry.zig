@@ -443,37 +443,69 @@ pub const Registry = struct {
             const id = try self.alloc.dupe(u8, ws_data.id);
             errdefer self.alloc.free(id);
 
-            // Build pane tree. If multiple session_ids are provided
-            // (multi-pane workspace from cmd+d splits), create one leaf per
-            // session. Otherwise create a single leaf.
+            // Build pane tree from per-pane metadata (preferred) or session_ids.
+            const sync_panes = ws_data.panes;
             const all_sids = ws_data.session_ids;
             const root: *PaneNode = root: {
-                if (all_sids.len > 1) {
-                    // Build a flat left-leaning split tree from the session list.
+                if (sync_panes.len > 0) {
+                    // Rich pane data from macOS sync (has title + directory per pane).
+                    if (sync_panes.len == 1) {
+                        const pane_id = try self.generatePaneId();
+                        const node = try self.alloc.create(PaneNode);
+                        node.* = .{ .leaf = .{
+                            .id = pane_id,
+                            .pane_type = .terminal,
+                            .session_id = try self.alloc.dupe(u8, sync_panes[0].session_id),
+                            .title = try self.alloc.dupe(u8, sync_panes[0].title),
+                            .directory = try self.alloc.dupe(u8, sync_panes[0].directory),
+                        } };
+                        break :root node;
+                    }
                     var current: *PaneNode = try self.alloc.create(PaneNode);
-                    const first_pane_id = try self.generatePaneId();
+                    const first_id = try self.generatePaneId();
                     current.* = .{ .leaf = .{
-                        .id = first_pane_id,
+                        .id = first_id,
+                        .pane_type = .terminal,
+                        .session_id = try self.alloc.dupe(u8, sync_panes[0].session_id),
+                        .title = try self.alloc.dupe(u8, sync_panes[0].title),
+                        .directory = try self.alloc.dupe(u8, sync_panes[0].directory),
+                    } };
+                    for (sync_panes[1..]) |pane| {
+                        const right_id = try self.generatePaneId();
+                        const right = try self.alloc.create(PaneNode);
+                        right.* = .{ .leaf = .{
+                            .id = right_id,
+                            .pane_type = .terminal,
+                            .session_id = try self.alloc.dupe(u8, pane.session_id),
+                            .title = try self.alloc.dupe(u8, pane.title),
+                            .directory = try self.alloc.dupe(u8, pane.directory),
+                        } };
+                        const split = try self.alloc.create(PaneNode);
+                        split.* = .{ .split = .{ .direction = .horizontal, .ratio = 0.5, .first = current, .second = right } };
+                        current = split;
+                    }
+                    break :root current;
+                } else if (all_sids.len > 1) {
+                    // Fallback: bare session_ids without per-pane metadata.
+                    var current: *PaneNode = try self.alloc.create(PaneNode);
+                    const first_id = try self.generatePaneId();
+                    current.* = .{ .leaf = .{
+                        .id = first_id,
                         .pane_type = .terminal,
                         .session_id = try self.alloc.dupe(u8, all_sids[0]),
                         .directory = try self.alloc.dupe(u8, ws_data.directory),
                     } };
                     for (all_sids[1..]) |sid| {
-                        const right_pane_id = try self.generatePaneId();
+                        const right_id = try self.generatePaneId();
                         const right = try self.alloc.create(PaneNode);
                         right.* = .{ .leaf = .{
-                            .id = right_pane_id,
+                            .id = right_id,
                             .pane_type = .terminal,
                             .session_id = try self.alloc.dupe(u8, sid),
                             .directory = try self.alloc.dupe(u8, ws_data.directory),
                         } };
                         const split = try self.alloc.create(PaneNode);
-                        split.* = .{ .split = .{
-                            .direction = .horizontal,
-                            .ratio = 0.5,
-                            .first = current,
-                            .second = right,
-                        } };
+                        split.* = .{ .split = .{ .direction = .horizontal, .ratio = 0.5, .first = current, .second = right } };
                         current = split;
                     }
                     break :root current;
@@ -519,6 +551,12 @@ pub const Registry = struct {
         self.change_seq += 1;
     }
 
+    pub const SyncPane = struct {
+        session_id: []const u8,
+        title: []const u8 = "",
+        directory: []const u8 = "",
+    };
+
     pub const SyncWorkspace = struct {
         id: []const u8,
         title: []const u8,
@@ -531,6 +569,9 @@ pub const Registry = struct {
         session_id: ?[]const u8 = null,
         /// Additional session IDs for multi-pane workspaces.
         session_ids: []const []const u8 = &.{},
+        /// Per-pane metadata (title, directory). Preferred over session_ids
+        /// when present, because it carries richer info.
+        panes: []const SyncPane = &.{},
     };
 };
 

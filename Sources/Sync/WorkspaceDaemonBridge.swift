@@ -116,6 +116,18 @@ final class WorkspaceDaemonBridge {
                     surfaceID: panel.surface.id
                 )
             }
+            // Per-pane metadata so iOS can show meaningful labels in the
+            // pane dropdown (surface title from shell, working directory).
+            let paneInfos: [[String: Any]] = terminalPanels.map { panel in
+                [
+                    "session_id": DaemonTerminalBridge.computeSessionID(
+                        workspaceID: workspace.id,
+                        surfaceID: panel.surface.id
+                    ),
+                    "title": panel.title,
+                    "directory": panel.directory,
+                ]
+            }
             var entry: [String: Any] = [
                 "id": workspace.id.uuidString.lowercased(),
                 "title": workspace.title,
@@ -125,6 +137,7 @@ final class WorkspaceDaemonBridge {
                 "color": workspace.customColor ?? "",
                 "unread_count": notificationStore.unreadCount(forTabId: workspace.id),
                 "pinned": workspace.isPinned,
+                "panes": paneInfos,
             ]
             if let primarySessionID = sessionIDs.first {
                 entry["session_id"] = primarySessionID
