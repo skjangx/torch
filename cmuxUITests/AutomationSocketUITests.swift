@@ -9,7 +9,7 @@ final class AutomationSocketUITests: XCTestCase {
         let presentCount: Int
 
         var hasPresentedFirstFrame: Bool {
-            inWindow && layerContentsKey != "nil"
+            inWindow && layerContentsKey != "nil" && presentCount > 0
         }
 
         var description: String {
@@ -80,7 +80,12 @@ final class AutomationSocketUITests: XCTestCase {
         )
 
         var seenWorkspaceIds: Set<String> = []
-        var seenPanelIds: Set<String> = []
+        var excludedPanelIds: Set<String> = []
+        var createdPanelIds: Set<String> = []
+
+        if let baselineStats = currentRenderStats() {
+            excludedPanelIds.insert(baselineStats.panelId)
+        }
 
         for index in 0..<10 {
             guard let workspaceId = okUUID(from: socketCommand("new_workspace")) else {
@@ -91,7 +96,10 @@ final class AutomationSocketUITests: XCTestCase {
             }
             seenWorkspaceIds.insert(workspaceId)
 
-            guard let stats = waitForSelectedWorkspaceFirstFrame(timeout: 5.0) else {
+            guard let stats = waitForSelectedWorkspaceFirstFrame(
+                timeout: 5.0,
+                excludingPanelIds: excludedPanelIds
+            ) else {
                 XCTFail(
                     "Expected newly created workspace to present its first frame on iteration \(index).\n" +
                     "workspaceId=\(workspaceId)\n\(debugWorkspaceCreationState())"
@@ -103,11 +111,12 @@ final class AutomationSocketUITests: XCTestCase {
                 stats.hasPresentedFirstFrame,
                 "Expected selected workspace to have a visible IOSurface-backed first frame. stats=\(stats)"
             )
-            seenPanelIds.insert(stats.panelId)
+            excludedPanelIds.insert(stats.panelId)
+            createdPanelIds.insert(stats.panelId)
         }
 
         XCTAssertEqual(seenWorkspaceIds.count, 10, "Expected each new_workspace call to create a distinct workspace")
-        XCTAssertEqual(seenPanelIds.count, 10, "Expected each created workspace to expose a distinct focused terminal panel")
+        XCTAssertEqual(createdPanelIds.count, 10, "Expected each created workspace to expose a distinct focused terminal panel")
         app.terminate()
     }
 
@@ -195,14 +204,17 @@ final class AutomationSocketUITests: XCTestCase {
         }
     }
 
-    private func waitForSelectedWorkspaceFirstFrame(timeout: TimeInterval) -> RenderStatsSnapshot? {
+    private func waitForSelectedWorkspaceFirstFrame(
+        timeout: TimeInterval,
+        excludingPanelIds: Set<String>
+    ) -> RenderStatsSnapshot? {
         let deadline = Date().addingTimeInterval(timeout)
         var latest: RenderStatsSnapshot?
 
         while Date() < deadline {
             if let stats = currentRenderStats() {
                 latest = stats
-                if stats.hasPresentedFirstFrame {
+                if !excludingPanelIds.contains(stats.panelId), stats.hasPresentedFirstFrame {
                     return stats
                 }
             }
