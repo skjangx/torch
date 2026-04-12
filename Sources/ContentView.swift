@@ -2594,6 +2594,7 @@ struct ContentView: View {
         VerticalTabsSidebar(
             updateViewModel: updateViewModel,
             onSendFeedback: presentFeedbackComposer,
+            windowId: windowId,
             selection: $sidebarSelectionState.selection,
             selectedTabIds: $selectedTabIds,
             lastSidebarSelectionIndex: $lastSidebarSelectionIndex
@@ -9906,6 +9907,7 @@ private struct SidebarTabItemPresentationSnapshot: Equatable {
 struct VerticalTabsSidebar: View {
     @ObservedObject var updateViewModel: UpdateViewModel
     let onSendFeedback: () -> Void
+    let windowId: UUID
     @EnvironmentObject var tabManager: TabManager
     @EnvironmentObject var notificationStore: TerminalNotificationStore
     @Binding var selection: SidebarSelection
@@ -9965,6 +9967,30 @@ struct VerticalTabsSidebar: View {
                         // Space for traffic lights / fullscreen controls
                         Spacer()
                             .frame(height: trafficLightPadding)
+
+                        // Window name header
+                        Text(tabManager.windowDisplayLabel)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 4)
+                            .contextMenu {
+                                Button(String(localized: "contextMenu.renameWindow", defaultValue: "Rename Window")) {
+                                    // Stub — wired in step 3.4
+                                }
+                                Button(String(localized: "contextMenu.copyWindowID", defaultValue: "Copy Window ID")) {
+                                    let pasteboard = NSPasteboard.general
+                                    pasteboard.clearContents()
+                                    pasteboard.setString(windowId.uuidString, forType: .string)
+                                }
+                            }
+
+                        Divider()
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 4)
 
                         // Workspaces are bounded, so prefer a non-lazy stack here.
                         // LazyVStack + drag-state invalidations can recurse through layout.
