@@ -1554,6 +1554,15 @@ final class BrowserNilTargetFallbackDecisionTests: XCTestCase {
         )
     }
 
+    func testOtherNavigationKeyDownGestureFallsBackToNewTab() {
+        XCTAssertTrue(
+            browserNavigationShouldFallbackNilTargetToNewTab(
+                navigationType: .other,
+                currentEventType: .keyDown
+            )
+        )
+    }
+
     func testLinkActivatedNavigationFallsBackToNewTab() {
         XCTAssertTrue(
             browserNavigationShouldFallbackNilTargetToNewTab(

@@ -5918,6 +5918,20 @@ func browserNavigationShouldOpenInNewTab(
     return false
 }
 
+func browserNavigationHasExplicitUserGesture(
+    currentEventType: NSEvent.EventType? = NSApp.currentEvent?.type
+) -> Bool {
+    switch currentEventType {
+    case .leftMouseDown, .leftMouseUp,
+         .rightMouseDown, .rightMouseUp,
+         .otherMouseDown, .otherMouseUp,
+         .keyDown:
+        return true
+    default:
+        return false
+    }
+}
+
 func browserNavigationShouldCreatePopup(
     navigationType: WKNavigationType,
     modifierFlags: NSEvent.ModifierFlags,
@@ -5934,15 +5948,29 @@ func browserNavigationShouldCreatePopup(
         currentEventType: currentEventType,
         currentEventButtonNumber: currentEventButtonNumber
     )
-    return navigationType == .other && !isUserNewTab
+    guard navigationType == .other else {
+        return false
+    }
+
+    // User-triggered new-window requests from form submits / clicks should
+    // reuse tab semantics; leave popup windows for scripted opener flows.
+    if isUserNewTab || browserNavigationHasExplicitUserGesture(currentEventType: currentEventType) {
+        return false
+    }
+    return true
 }
 
 func browserNavigationShouldFallbackNilTargetToNewTab(
-    navigationType: WKNavigationType
+    navigationType: WKNavigationType,
+    currentEventType: NSEvent.EventType? = NSApp.currentEvent?.type
 ) -> Bool {
     // Scripted popups rely on WKUIDelegate.createWebViewWith returning a live
     // web view so window.opener/postMessage remain intact across OAuth flows.
-    navigationType != .other
+    if navigationType != .other {
+        return true
+    }
+
+    return browserNavigationHasExplicitUserGesture(currentEventType: currentEventType)
 }
 
 private class BrowserNavigationDelegate: NSObject, WKNavigationDelegate {
@@ -6126,9 +6154,13 @@ private class BrowserNavigationDelegate: NSObject, WKNavigationDelegate {
         let currentEventType = NSApp.currentEvent.map { String(describing: $0.type) } ?? "nil"
         let currentEventButton = NSApp.currentEvent.map { String($0.buttonNumber) } ?? "nil"
         let navType = String(describing: navigationAction.navigationType)
+        let requestMethod = navigationAction.request.httpMethod ?? "nil"
+        let requestURL = navigationAction.request.url?.absoluteString ?? "nil"
+        let targetMainFrame = navigationAction.targetFrame.map { $0.isMainFrame ? "1" : "0" } ?? "nil"
         dlog(
             "browser.nav.decidePolicy navType=\(navType) button=\(navigationAction.buttonNumber) " +
             "mods=\(navigationAction.modifierFlags.rawValue) targetNil=\(navigationAction.targetFrame == nil ? 1 : 0) " +
+            "targetMain=\(targetMainFrame) method=\(requestMethod) url=\(requestURL) " +
             "eventType=\(currentEventType) eventButton=\(currentEventButton) " +
             "recentMiddleIntent=\(hasRecentMiddleClickIntent ? 1 : 0) " +
             "openInNewTab=\(shouldOpenInNewTab ? 1 : 0)"
@@ -6315,10 +6347,24 @@ private class BrowserUIDelegate: NSObject, WKUIDelegate {
         let currentEventType = NSApp.currentEvent.map { String(describing: $0.type) } ?? "nil"
         let currentEventButton = NSApp.currentEvent.map { String($0.buttonNumber) } ?? "nil"
         let navType = String(describing: navigationAction.navigationType)
+        let requestMethod = navigationAction.request.httpMethod ?? "nil"
+        let requestURL = navigationAction.request.url?.absoluteString ?? "nil"
+        let targetMainFrame = navigationAction.targetFrame.map { $0.isMainFrame ? "1" : "0" } ?? "nil"
+        let windowFeaturesSummary = [
+            "x=\(windowFeatures.x?.stringValue ?? "nil")",
+            "y=\(windowFeatures.y?.stringValue ?? "nil")",
+            "w=\(windowFeatures.width?.stringValue ?? "nil")",
+            "h=\(windowFeatures.height?.stringValue ?? "nil")",
+            "toolbar=\(windowFeatures.toolbarVisibility?.stringValue ?? "nil")",
+            "status=\(windowFeatures.statusBarVisibility?.stringValue ?? "nil")",
+            "menu=\(windowFeatures.menuBarVisibility?.stringValue ?? "nil")"
+        ].joined(separator: ",")
         dlog(
             "browser.nav.createWebView navType=\(navType) button=\(navigationAction.buttonNumber) " +
             "mods=\(navigationAction.modifierFlags.rawValue) targetNil=\(navigationAction.targetFrame == nil ? 1 : 0) " +
-            "eventType=\(currentEventType) eventButton=\(currentEventButton)"
+            "targetMain=\(targetMainFrame) method=\(requestMethod) url=\(requestURL) " +
+            "eventType=\(currentEventType) eventButton=\(currentEventButton) " +
+            "windowFeatures={\(windowFeaturesSummary)}"
         )
 #endif
         // External URL schemes → hand off to macOS, don't create a popup
