@@ -3944,6 +3944,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 "snapshotDisplay={\(debugSessionDisplayDescription(snapshot.display))}"
         )
 #endif
+        context.customName = snapshot.customName
+#if DEBUG
+        dlog("window.restore name=\(snapshot.customName ?? "nil") id=\(context.windowId) path=apply")
+#endif
         context.tabManager.restoreSessionSnapshot(snapshot.tabManager)
         context.sidebarState.isVisible = snapshot.sidebar.isVisible
         context.sidebarState.persistedWidth = CGFloat(
@@ -4427,6 +4431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         for context in contexts.prefix(SessionPersistencePolicy.maxWindowsPerSnapshot) {
             hasher.combine(context.windowId)
+            hasher.combine(context.customName)
             hasher.combine(context.tabManager.sessionAutosaveFingerprint())
             hasher.combine(context.sidebarState.isVisible)
             hasher.combine(
@@ -4738,7 +4743,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                         isVisible: context.sidebarState.isVisible,
                         selection: SessionSidebarSelection(selection: context.sidebarSelectionState.selection),
                         width: SessionPersistencePolicy.sanitizedSidebarWidth(Double(context.sidebarState.persistedWidth))
-                    )
+                    ),
+                    customName: context.customName,
+                    windowId: context.windowId
                 )
             }
 
@@ -7081,9 +7088,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @discardableResult
     func createMainWindow(
         initialWorkingDirectory: String? = nil,
-        sessionWindowSnapshot: SessionWindowSnapshot? = nil
+        sessionWindowSnapshot: SessionWindowSnapshot? = nil,
+        windowId: UUID? = nil
     ) -> UUID {
-        let windowId = UUID()
+        let windowId = windowId ?? sessionWindowSnapshot?.windowId ?? UUID()
         let tabManager = TabManager(initialWorkingDirectory: initialWorkingDirectory)
         if let tabManagerSnapshot = sessionWindowSnapshot?.tabManager {
             tabManager.restoreSessionSnapshot(tabManagerSnapshot)
@@ -7192,6 +7200,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             sidebarState: sidebarState,
             sidebarSelectionState: sidebarSelectionState
         )
+        // Restore custom name from snapshot AFTER registration creates the context
+        // but BEFORE any label refresh (wired in step 1.3).
+        if let restoredName = sessionWindowSnapshot?.customName {
+            let key = ObjectIdentifier(window)
+            mainWindowContexts[key]?.customName = restoredName
+#if DEBUG
+            dlog("window.restore name=\(restoredName) id=\(windowId) path=create")
+#endif
+        }
         installFileDropOverlay(on: window, tabManager: tabManager)
         if TerminalController.shouldSuppressSocketCommandActivation() {
             window.orderFront(nil)
