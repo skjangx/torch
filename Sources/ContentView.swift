@@ -9983,7 +9983,7 @@ struct VerticalTabsSidebar: View {
 
     /// Space at top of sidebar for traffic light buttons
     private let trafficLightPadding: CGFloat = 28
-    private let tabRowSpacing: CGFloat = 2
+    private let tabRowSpacing: CGFloat = 4
     private let hiddenTitlebarControlsLeadingInset: CGFloat = 72
 
     private var isMinimalMode: Bool {
@@ -12610,7 +12610,7 @@ private struct TabItemView: View, Equatable {
     }
 
     private var titleFontWeight: Font.Weight {
-        .semibold
+        .medium
     }
 
     private var showsLeadingRail: Bool {
@@ -12745,7 +12745,7 @@ private struct TabItemView: View, Equatable {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(remoteWorkspaceSidebarText)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(activeSecondaryColor(0.8))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -12848,7 +12848,8 @@ private struct TabItemView: View, Equatable {
                 }
 
                 Text(tab.title)
-                    .font(.system(size: 12.5, weight: titleFontWeight))
+                    .font(.system(size: 13, weight: titleFontWeight))
+                    .tracking(-0.065)
                     .foregroundColor(activePrimaryTextColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -12904,7 +12905,7 @@ private struct TabItemView: View, Equatable {
 
             if let subtitle = effectiveSubtitle {
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundColor(activeSecondaryColor(0.8))
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -12941,7 +12942,7 @@ private struct TabItemView: View, Equatable {
                         .font(.system(size: 8))
                         .foregroundColor(logLevelColor(latestLog.level, isActive: usesInvertedActiveForeground))
                     Text(latestLog.message)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10.5))
                         .foregroundColor(activeSecondaryColor(0.8))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -12988,7 +12989,7 @@ private struct TabItemView: View, Equatable {
                                     HStack(spacing: 3) {
                                         if let branch = line.branch {
                                             Text(branch)
-                                                .font(.system(size: 10, design: .monospaced))
+                                                .font(.system(size: 10.5, design: .monospaced))
                                                 .foregroundColor(activeSecondaryColor(0.75))
                                                 .lineLimit(1)
                                                 .truncationMode(.tail)
@@ -13001,7 +13002,7 @@ private struct TabItemView: View, Equatable {
                                         }
                                         if let directory = line.directory {
                                             Text(directory)
-                                                .font(.system(size: 10, design: .monospaced))
+                                                .font(.system(size: 10.5, design: .monospaced))
                                                 .foregroundColor(activeSecondaryColor(0.75))
                                                 .lineLimit(1)
                                                 .truncationMode(.tail)
@@ -13019,7 +13020,7 @@ private struct TabItemView: View, Equatable {
                                 .foregroundColor(activeSecondaryColor(0.6))
                         }
                         Text(dirRow)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 10.5, design: .monospaced))
                             .foregroundColor(activeSecondaryColor(0.75))
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -13047,7 +13048,7 @@ private struct TabItemView: View, Equatable {
                                     .lineLimit(1)
                                 Spacer(minLength: 0)
                             }
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10.5, weight: .semibold))
                             .foregroundColor(pullRequestForegroundColor)
                             .opacity(pullRequest.isStale ? 0.5 : 1)
                         }
@@ -13072,7 +13073,7 @@ private struct TabItemView: View, Equatable {
                     }
                     Spacer(minLength: 0)
                 }
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(activeSecondaryColor(0.75))
                 .lineLimit(1)
             }
@@ -13083,10 +13084,10 @@ private struct TabItemView: View, Equatable {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(backgroundColor)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(activeBorderColor, lineWidth: activeBorderLineWidth)
                 }
                 .overlay(alignment: .leading) {
@@ -14290,7 +14291,7 @@ private struct SidebarMetadataEntryRow: View {
                 .truncationMode(.tail)
             Spacer(minLength: 0)
         }
-        .font(.system(size: 10))
+        .font(.system(size: 10.5))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -14411,7 +14412,7 @@ private struct SidebarMetadataMarkdownBlockRow: View {
                     .foregroundColor(foregroundColor)
             }
         }
-        .font(.system(size: 10))
+        .font(.system(size: 10.5))
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
         .contentShape(Rectangle())
