@@ -71522,6 +71522,29 @@
         }
       }
     },
+    "sidebar.activeTabIndicator.swatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swatch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スウォッチ"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Зразок"
+          }
+        }
+      }
+    },
     "sidebar.workspace.moveDownAction": {
       "extractionState": "manual",
       "localizations": {
