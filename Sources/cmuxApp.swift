@@ -158,9 +158,15 @@ struct cmuxApp: App {
     init() {
         UITestLaunchManifest.applyIfPresent()
 
-        if SocketControlSettings.shouldBlockUntaggedDebugLaunch() {
-            Self.terminateForMissingLaunchTag()
-        }
+        // Personal-fork: untagged debug launch guard removed so Torch DEV
+        // can be launched from Finder/Spotlight/Dock without CMUX_TAG=dev.
+        // The guard's purpose (preventing accidental dev launch when a
+        // production cmux is also installed) doesn't apply here because:
+        // (1) the .debug bundle ID isolates this build's UserDefaults,
+        // (2) socket paths are bundle-ID-scoped (`/tmp/cmux-debug.sock`),
+        // (3) session/trust dirs are bundle-ID-namespaced.
+        // `SocketControlSettings.shouldBlockUntaggedDebugLaunch()` is left
+        // intact for its tests and any future tooling that wants to query it.
 
         Self.configureGhosttyEnvironment()
         _ = KeyboardShortcutSettings.settingsFileStore

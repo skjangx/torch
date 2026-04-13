@@ -524,6 +524,20 @@ struct SocketControlSettings {
         if isTruthy(environment[allowSocketPathOverrideKey]) {
             return true
         }
+        // Personal-fork: the base `.debug` bundle (Torch DEV) must NOT
+        // auto-honor an inherited `CMUX_SOCKET_PATH`. Production cmux
+        // installs that env var via `launchctl setenv` so every new process
+        // inherits it. Without this guard, Torch DEV would bind to the
+        // production socket path and kick the production daemon's listener
+        // offline. The .debug build should always use its bundle-derived
+        // path (`/tmp/cmux-debug.sock`) unless the user explicitly opts in
+        // via `CMUX_ALLOW_SOCKET_OVERRIDE=1`.
+        // Tagged debug variants (`com.torch-terminal.app.debug.<tag>`) and
+        // staging builds keep their existing override-honoring behavior
+        // because they're explicitly opted-in workflows.
+        if bundleIdentifier == baseDebugBundleIdentifier {
+            return false
+        }
         if isDebugLikeBundleIdentifier(bundleIdentifier) || isStagingBundleIdentifier(bundleIdentifier) {
             return true
         }
