@@ -155,6 +155,7 @@ struct SidebarWorkspaceAuxiliaryDetailVisibility: Equatable {
 enum SidebarActiveTabIndicatorStyle: String, CaseIterable, Identifiable {
     case leftRail
     case solidFill
+    case swatch
 
     var id: String { rawValue }
 
@@ -164,6 +165,8 @@ enum SidebarActiveTabIndicatorStyle: String, CaseIterable, Identifiable {
             return String(localized: "sidebar.activeTabIndicator.leftRail", defaultValue: "Left Rail")
         case .solidFill:
             return String(localized: "sidebar.activeTabIndicator.solidFill", defaultValue: "Solid Fill")
+        case .swatch:
+            return String(localized: "sidebar.activeTabIndicator.swatch", defaultValue: "Swatch")
         }
     }
 }

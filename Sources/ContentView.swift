@@ -12624,6 +12624,8 @@ private struct TabItemView: View, Equatable {
             return 0
         case .solidFill:
             return isActive ? 1.5 : 0
+        case .swatch:
+            return 0
         }
     }
 
@@ -12634,6 +12636,8 @@ private struct TabItemView: View, Equatable {
             return .clear
         case .solidFill:
             return Color.primary.opacity(0.5)
+        case .swatch:
+            return .clear
         }
     }
 
@@ -13519,6 +13523,11 @@ private struct TabItemView: View, Equatable {
                 if isMultiSelected { return custom.opacity(0.35) }
                 return custom.opacity(0.7)
             }
+            if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isHovering      { return Color.white.opacity(0.04) }
+            return Color.clear
+        case .swatch:
+            if isActive        { return Color(nsColor: selectionBackgroundColor) }
             if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
