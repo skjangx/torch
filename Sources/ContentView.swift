@@ -12832,6 +12832,17 @@ private struct TabItemView: View, Equatable {
             return pullRequestDisplays(orderedPanelIds: orderedPanelIds)
         }()
 
+        let swatchView: AnyView? = {
+            guard activeTabIndicatorStyle == .swatch, let color = resolvedCustomTabColor else {
+                return nil
+            }
+            return AnyView(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(color)
+                    .frame(width: 10, height: 10)
+            )
+        }()
+
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 if unreadCount > 0 {
@@ -12851,6 +12862,8 @@ private struct TabItemView: View, Equatable {
                         .foregroundColor(activeSecondaryColor(0.8))
                         .safeHelp(protectedWorkspaceTooltip)
                 }
+
+                swatchView
 
                 Text(tab.title)
                     .font(.system(size: 13, weight: titleFontWeight))
