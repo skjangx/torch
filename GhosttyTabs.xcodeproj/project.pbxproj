@@ -1043,6 +1043,7 @@
 					Carbon,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.torch-terminal.app.debug;
+				PRODUCT_MODULE_NAME = cmux_DEV;
 				PRODUCT_NAME = "Torch DEV";
 				SPARKLE_PUBLIC_KEY = "avjcgKibf1FTvhIjLBxhd+0HSpsXU4D0IGlVk8cgqRc=";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1083,6 +1084,7 @@
 				);
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.torch-terminal.app;
+				PRODUCT_MODULE_NAME = cmux;
 				PRODUCT_NAME = Torch;
 				SPARKLE_PUBLIC_KEY = "avjcgKibf1FTvhIjLBxhd+0HSpsXU4D0IGlVk8cgqRc=";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1226,7 +1228,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux DEV.app/Contents/MacOS/cmux DEV";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Torch DEV.app/Contents/MacOS/Torch DEV";
 				TEST_TARGET_NAME = GhosttyTabs;
 			};
 			name = Debug;
@@ -1244,7 +1246,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.torch-terminal.apptests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux.app/Contents/MacOS/cmux";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Torch.app/Contents/MacOS/Torch";
 				TEST_TARGET_NAME = GhosttyTabs;
 			};
 			name = Release;

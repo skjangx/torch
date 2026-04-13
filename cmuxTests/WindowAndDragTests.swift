@@ -297,6 +297,113 @@ final class AppDelegateWindowContextRoutingTests: XCTestCase {
 
 
 @MainActor
+final class WindowNamingIntegrationTests: XCTestCase {
+    private func makeMainWindow(id: UUID) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 320),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier("cmux.main.\(id.uuidString)")
+        return window
+    }
+
+    func testNamingMiddleWindowRenumbersUnnamedSiblings() {
+        _ = NSApplication.shared
+        let app = AppDelegate()
+
+        let aId = UUID()
+        let bId = UUID()
+        let cId = UUID()
+        let windowA = makeMainWindow(id: aId)
+        let windowB = makeMainWindow(id: bId)
+        let windowC = makeMainWindow(id: cId)
+        defer {
+            windowA.orderOut(nil)
+            windowB.orderOut(nil)
+            windowC.orderOut(nil)
+        }
+
+        let managerA = TabManager()
+        let managerB = TabManager()
+        let managerC = TabManager()
+
+        app.registerMainWindow(
+            windowA,
+            windowId: aId,
+            tabManager: managerA,
+            sidebarState: SidebarState(),
+            sidebarSelectionState: SidebarSelectionState()
+        )
+        app.registerMainWindow(
+            windowB,
+            windowId: bId,
+            tabManager: managerB,
+            sidebarState: SidebarState(),
+            sidebarSelectionState: SidebarSelectionState()
+        )
+        app.registerMainWindow(
+            windowC,
+            windowId: cId,
+            tabManager: managerC,
+            sidebarState: SidebarState(),
+            sidebarSelectionState: SidebarSelectionState()
+        )
+
+        XCTAssertEqual(managerA.windowDisplayLabel, "Window 1")
+        XCTAssertEqual(managerB.windowDisplayLabel, "Window 2")
+        XCTAssertEqual(managerC.windowDisplayLabel, "Window 3")
+
+        app.setWindowName(windowId: bId, name: "Backend")
+
+        XCTAssertEqual(managerA.windowDisplayLabel, "Window 1", "First unnamed window keeps its slot")
+        XCTAssertEqual(managerB.windowDisplayLabel, "Backend", "Named window adopts custom name")
+        XCTAssertEqual(managerB.windowName, "Backend")
+        XCTAssertEqual(managerC.windowDisplayLabel, "Window 2", "Trailing unnamed window renumbers contiguously around the named gap")
+    }
+
+    func testSetWindowNameNormalizesEmptyAndWhitespace() {
+        _ = NSApplication.shared
+        let app = AppDelegate()
+
+        let windowId = UUID()
+        let window = makeMainWindow(id: windowId)
+        defer { window.orderOut(nil) }
+
+        let manager = TabManager()
+        app.registerMainWindow(
+            window,
+            windowId: windowId,
+            tabManager: manager,
+            sidebarState: SidebarState(),
+            sidebarSelectionState: SidebarSelectionState()
+        )
+
+        // Empty string → nil
+        app.setWindowName(windowId: windowId, name: "")
+        XCTAssertNil(manager.windowName, "Empty string must normalize to nil")
+        XCTAssertEqual(manager.windowDisplayLabel, "Window 1")
+
+        // Whitespace-only → nil
+        app.setWindowName(windowId: windowId, name: "   ")
+        XCTAssertNil(manager.windowName, "Whitespace-only must normalize to nil")
+        XCTAssertEqual(manager.windowDisplayLabel, "Window 1")
+
+        // Padded value → trimmed
+        app.setWindowName(windowId: windowId, name: "  Backend  ")
+        XCTAssertEqual(manager.windowName, "Backend", "Surrounding whitespace must be trimmed")
+        XCTAssertEqual(manager.windowDisplayLabel, "Backend")
+
+        // Clear an existing name (the `torch rename-os-window ""` flow)
+        app.setWindowName(windowId: windowId, name: "")
+        XCTAssertNil(manager.windowName, "Empty must clear an existing name back to nil")
+        XCTAssertEqual(manager.windowDisplayLabel, "Window 1", "Display label falls back to Window N after clear")
+    }
+}
+
+
+@MainActor
 final class AppDelegateLaunchServicesRegistrationTests: XCTestCase {
     func testScheduleLaunchServicesRegistrationDefersRegisterWork() {
         _ = NSApplication.shared

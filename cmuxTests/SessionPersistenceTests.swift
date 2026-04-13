@@ -164,6 +164,40 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(SessionPersistenceStore.load(fileURL: snapshotURL))
     }
 
+    func testWindowSnapshotPersistsCustomNameAndId() throws {
+        // Round-trip: encode a snapshot with non-nil customName + windowId, decode, verify equality.
+        let knownWindowId = UUID()
+        var snapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        snapshot.windows[0].customName = "Backend"
+        snapshot.windows[0].windowId = knownWindowId
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(snapshot)
+
+        // Positive key-presence assertion guards against future CodingKeys renames
+        // (e.g., customName → window_custom_name) that would silently break every saved file.
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"customName\":\"Backend\""), "JSON must encode the customName key verbatim")
+        XCTAssertTrue(json.contains("\"windowId\""), "JSON must encode the windowId key")
+
+        let decoded = try JSONDecoder().decode(AppSessionSnapshot.self, from: data)
+        XCTAssertEqual(decoded.windows.first?.customName, "Backend")
+        XCTAssertEqual(decoded.windows.first?.windowId, knownWindowId)
+
+        // Forward-compat: decode a legacy blob (pre-feature) and verify both fields default to nil.
+        var legacySnapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        legacySnapshot.windows[0].customName = nil
+        legacySnapshot.windows[0].windowId = nil
+        let legacyData = try encoder.encode(legacySnapshot)
+        let legacyJson = try XCTUnwrap(String(data: legacyData, encoding: .utf8))
+        XCTAssertFalse(legacyJson.contains("\"customName\""), "Nil customName should not appear in encoded JSON")
+        XCTAssertFalse(legacyJson.contains("\"windowId\""), "Nil windowId should not appear in encoded JSON")
+
+        let legacyDecoded = try JSONDecoder().decode(AppSessionSnapshot.self, from: legacyData)
+        XCTAssertNil(legacyDecoded.windows.first?.customName, "Missing customName key must decode to nil (forward-compat with pre-feature saves)")
+        XCTAssertNil(legacyDecoded.windows.first?.windowId, "Missing windowId key must decode to nil (forward-compat with pre-feature saves)")
+    }
+
     func testDefaultSnapshotPathSanitizesBundleIdentifier() {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-session-tests-\(UUID().uuidString)", isDirectory: true)
