@@ -12551,6 +12551,7 @@ private struct TabItemView: View, Equatable {
     @State private var workspaceObservationGeneration: UInt64 = 0
     @StateObject private var contextMenuState = SidebarTabItemContextMenuState()
     @State private var isHovering = false
+    @State private var closeButtonHovered = false
     @State private var rowHeight: CGFloat = 1
 
     var isMultiSelected: Bool {
@@ -12864,13 +12865,19 @@ private struct TabItemView: View, Equatable {
                         #endif
                         tabManager.closeWorkspaceWithConfirmation(tab)
                     }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(activeSecondaryColor(0.7))
+                        ZStack {
+                            Circle()
+                                .fill(closeButtonHovered ? Color(red: 1, green: 0.37, blue: 0.34).opacity(0.22) : Color.white.opacity(0.08))
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(closeButtonHovered ? Color(red: 1, green: 0.56, blue: 0.53) : .white.opacity(0.75))
+                        }
                     }
                     .buttonStyle(.plain)
                     .safeHelp(closeButtonTooltip)
                     .frame(width: SidebarTrailingAccessoryWidthPolicy.closeButtonWidth, height: 16, alignment: .center)
+                    .contentShape(Circle())
+                    .onHover { closeButtonHovered = $0 }
                     .opacity(showCloseButton && !showsWorkspaceShortcutHint ? 1 : 0)
                     .allowsHitTesting(showCloseButton && !showsWorkspaceShortcutHint)
 
@@ -13174,6 +13181,7 @@ private struct TabItemView: View, Equatable {
             dlog("sidebar.onDrag tab=\(tab.id.uuidString.prefix(5))")
             #endif
             isHovering = false
+            closeButtonHovered = false
             draggedTabId = tab.id
             dropIndicator = nil
             return SidebarTabDragPayload.provider(for: tab.id)
@@ -13201,6 +13209,9 @@ private struct TabItemView: View, Equatable {
         .onHover { hovering in
             guard !contextMenuState.isVisible else { return }
             isHovering = hovering
+        }
+        .onChange(of: isHovering) { _, newValue in
+            if !newValue { closeButtonHovered = false }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityTitle))
