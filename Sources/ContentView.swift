@@ -12942,7 +12942,7 @@ private struct TabItemView: View, Equatable {
                     .tracking(-0.065)
                     .foregroundColor(activePrimaryTextColor)
                     .lineLimit(1)
-                    .truncationMode(.tail)
+                    .truncationMode(.middle)
                     .layoutPriority(1)
 
                 Spacer(minLength: 0)
