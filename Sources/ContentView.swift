@@ -13100,6 +13100,7 @@ private struct TabItemView: View, Equatable {
                             .offset(x: -1)
                     }
                 }
+                .animation(.easeInOut(duration: 0.12), value: isHovering)
         )
         .padding(.horizontal, 6)
         .background {
@@ -13172,6 +13173,7 @@ private struct TabItemView: View, Equatable {
             #if DEBUG
             dlog("sidebar.onDrag tab=\(tab.id.uuidString.prefix(5))")
             #endif
+            isHovering = false
             draggedTabId = tab.id
             dropIndicator = nil
             return SidebarTabDragPayload.provider(for: tab.id)
@@ -13498,6 +13500,7 @@ private struct TabItemView: View, Equatable {
         case .leftRail:
             if isActive        { return Color(nsColor: selectionBackgroundColor) }
             if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         case .solidFill:
             if isActive { return Color(nsColor: selectionBackgroundColor) }
@@ -13506,6 +13509,7 @@ private struct TabItemView: View, Equatable {
                 return custom.opacity(0.7)
             }
             if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         }
     }
