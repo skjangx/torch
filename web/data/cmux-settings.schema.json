@@ -216,7 +216,7 @@
       "properties": {
         "indicatorStyle": {
           "type": "string",
-          "enum": ["leftRail", "solidFill", "rail", "border", "wash", "lift", "typography", "washRail", "blueWashColorRail"],
+          "enum": ["leftRail", "solidFill", "swatch", "rail", "border", "wash", "lift", "typography", "washRail", "blueWashColorRail"],
           "default": "leftRail",
           "description": "Active workspace indicator style. Legacy aliases are accepted and normalized."
         },
