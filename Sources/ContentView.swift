@@ -12833,14 +12833,25 @@ private struct TabItemView: View, Equatable {
         }()
 
         let swatchView: AnyView? = {
-            guard activeTabIndicatorStyle == .swatch, let color = resolvedCustomTabColor else {
-                return nil
+            guard activeTabIndicatorStyle == .swatch else { return nil }
+            if let color = resolvedCustomTabColor {
+                return AnyView(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color)
+                        .frame(width: 10, height: 10)
+                )
+            } else {
+                // Placeholder for uncolored workspaces
+                return AnyView(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.primary.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                        )
+                        .frame(width: 10, height: 10)
+                )
             }
-            return AnyView(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(color)
-                    .frame(width: 10, height: 10)
-            )
         }()
 
         VStack(alignment: .leading, spacing: 4) {

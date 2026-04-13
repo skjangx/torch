@@ -173,7 +173,7 @@ enum SidebarActiveTabIndicatorStyle: String, CaseIterable, Identifiable {
 
 enum SidebarActiveTabIndicatorSettings {
     static let styleKey = "sidebarActiveTabIndicatorStyle"
-    static let defaultStyle: SidebarActiveTabIndicatorStyle = .leftRail
+    static let defaultStyle: SidebarActiveTabIndicatorStyle = .swatch
 
     static func resolvedStyle(rawValue: String?) -> SidebarActiveTabIndicatorStyle {
         guard let rawValue else { return defaultStyle }

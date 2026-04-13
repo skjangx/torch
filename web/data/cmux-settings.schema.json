@@ -217,7 +217,7 @@
         "indicatorStyle": {
           "type": "string",
           "enum": ["leftRail", "solidFill", "swatch", "rail", "border", "wash", "lift", "typography", "washRail", "blueWashColorRail"],
-          "default": "leftRail",
+          "default": "swatch",
           "description": "Active workspace indicator style. Legacy aliases are accepted and normalized."
         },
         "selectionColor": {
