@@ -71545,6 +71545,29 @@
         }
       }
     },
+    "sidebar.swatch.accessibilityLabel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change workspace color"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースの色を変更"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Змінити колір робочого простору"
+          }
+        }
+      }
+    },
     "sidebar.workspace.moveDownAction": {
       "extractionState": "manual",
       "localizations": {

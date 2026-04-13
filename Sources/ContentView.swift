@@ -12553,6 +12553,7 @@ private struct TabItemView: View, Equatable {
     @State private var isHovering = false
     @State private var closeButtonHovered = false
     @State private var rowHeight: CGFloat = 1
+    @State private var showsColorPopover = false
 
     var isMultiSelected: Bool {
         selectedTabIds.contains(tab.id)
@@ -12834,24 +12835,84 @@ private struct TabItemView: View, Equatable {
 
         let swatchView: AnyView? = {
             guard activeTabIndicatorStyle == .swatch else { return nil }
-            if let color = resolvedCustomTabColor {
-                return AnyView(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(color)
-                        .frame(width: 10, height: 10)
-                )
-            } else {
-                // Placeholder for uncolored workspaces
-                return AnyView(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.primary.opacity(0.06))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-                        )
-                        .frame(width: 10, height: 10)
-                )
-            }
+            let swatchShape: some View = {
+                if let color = resolvedCustomTabColor {
+                    return AnyView(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(color)
+                            .frame(width: 10, height: 10)
+                    )
+                } else {
+                    // Placeholder for uncolored workspaces
+                    return AnyView(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.primary.opacity(0.06))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                            )
+                            .frame(width: 10, height: 10)
+                    )
+                }
+            }()
+            return AnyView(
+                Button {
+                    showsColorPopover = true
+                } label: {
+                    swatchShape
+                }
+                .buttonStyle(.plain)
+                .contentShape(RoundedRectangle(cornerRadius: 3))
+                .accessibilityLabel(String(localized: "sidebar.swatch.accessibilityLabel", defaultValue: "Change workspace color"))
+                .popover(isPresented: $showsColorPopover, arrowEdge: .trailing) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if tab.customColor != nil {
+                            Button {
+                                showsColorPopover = false
+                                applyTabColor(nil, targetIds: [tab.id])
+                            } label: {
+                                Label(String(localized: "contextMenu.clearColor", defaultValue: "Clear Color"), systemImage: "xmark.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                        }
+
+                        Button {
+                            showsColorPopover = false
+                            promptCustomColor(targetIds: [tab.id])
+                        } label: {
+                            Label(String(localized: "contextMenu.chooseCustomColor", defaultValue: "Choose Custom Color…"), systemImage: "paintpalette")
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+
+                        let palette = WorkspaceTabColorSettings.palette()
+                        if !palette.isEmpty {
+                            Divider()
+                                .padding(.vertical, 4)
+                        }
+
+                        ForEach(palette, id: \.id) { entry in
+                            Button {
+                                showsColorPopover = false
+                                applyTabColor(entry.hex, targetIds: [tab.id])
+                            } label: {
+                                Label {
+                                    Text(entry.name)
+                                } icon: {
+                                    Image(nsImage: coloredCircleImage(color: tabColorSwatchColor(for: entry.hex)))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            )
         }()
 
         VStack(alignment: .leading, spacing: 4) {
