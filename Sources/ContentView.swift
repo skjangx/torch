@@ -12910,14 +12910,10 @@ private struct TabItemView: View, Equatable {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 if unreadCount > 0 {
-                    ZStack {
-                        Circle()
-                            .fill(activeUnreadBadgeFillColor)
-                        Text("\(unreadCount)")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: 16, height: 16)
+                    Circle()
+                        .fill(activeUnreadBadgeFillColor)
+                        .frame(width: 6, height: 6)
+                        .transition(.scale.combined(with: .opacity))
                 }
 
                 if tab.isPinned {
