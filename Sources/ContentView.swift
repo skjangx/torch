@@ -12625,26 +12625,13 @@ private struct TabItemView: View, Equatable {
     }
 
     private var activeBorderLineWidth: CGFloat {
-        switch activeTabIndicatorStyle {
-        case .leftRail:
-            return 0
-        case .solidFill:
-            return isActive ? 1.5 : 0
-        case .swatch:
-            return 0
-        }
+        // Soft tint selection — no borders needed for any style
+        0
     }
 
     private var activeBorderColor: Color {
-        guard isActive else { return .clear }
-        switch activeTabIndicatorStyle {
-        case .leftRail:
-            return .clear
-        case .solidFill:
-            return Color.primary.opacity(0.5)
-        case .swatch:
-            return .clear
-        }
+        // Soft tint selection — no borders needed for any style
+        .clear
     }
 
     private var usesInvertedActiveForeground: Bool {
@@ -13204,6 +13191,13 @@ private struct TabItemView: View, Equatable {
                 }
                 .animation(.easeInOut(duration: 0.12), value: isHovering)
         )
+        .background {
+            // Soft selection tint overlay for solidFill with custom color
+            if activeTabIndicatorStyle == .solidFill && isActive && resolvedCustomTabColor != nil {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(softSelectionColor)
+            }
+        }
         .padding(.horizontal, 6)
         .background {
             GeometryReader { proxy in
@@ -13614,7 +13608,11 @@ private struct TabItemView: View, Equatable {
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         case .solidFill:
-            if isActive { return Color(nsColor: selectionBackgroundColor) }
+            if isActive {
+                // Custom color shows through at reduced opacity; tint overlay added via view layer
+                if resolvedCustomTabColor != nil { return resolvedCustomTabColor!.opacity(0.7) }
+                return softSelectionColor
+            }
             if let custom = resolvedCustomTabColor {
                 if isMultiSelected { return custom.opacity(0.35) }
                 return custom.opacity(0.7)
