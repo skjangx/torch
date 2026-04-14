@@ -13609,7 +13609,7 @@ private struct TabItemView: View, Equatable {
     private var backgroundColor: Color {
         switch activeTabIndicatorStyle {
         case .leftRail:
-            if isActive        { return Color(nsColor: selectionBackgroundColor) }
+            if isActive        { return softSelectionColor }
             if isMultiSelected { return cmuxAccentColor().opacity(0.08) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
@@ -13635,11 +13635,13 @@ private struct TabItemView: View, Equatable {
     }
 
     private var explicitRailColor: Color? {
-        guard activeTabIndicatorStyle == .leftRail,
-              let custom = resolvedCustomTabColor else {
-            return nil
+        guard activeTabIndicatorStyle == .leftRail else { return nil }
+        if let custom = resolvedCustomTabColor {
+            return custom.opacity(0.95)
         }
-        return custom.opacity(0.95)
+        // Subtle placeholder rail for active rows without custom color (matches swatch placeholder treatment)
+        if isActive { return Color.primary.opacity(0.12) }
+        return nil
     }
 
     private var resolvedCustomTabColor: Color? {
