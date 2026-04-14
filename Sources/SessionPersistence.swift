@@ -341,6 +341,7 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var logEntries: [SessionLogEntrySnapshot]
     var progress: SessionProgressSnapshot?
     var gitBranch: SessionGitBranchSnapshot?
+    var lastActivityAt: Date?
 }
 
 struct SessionTabManagerSnapshot: Codable, Sendable {

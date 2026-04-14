@@ -305,7 +305,8 @@ extension Workspace {
             statusEntries: statusSnapshots,
             logEntries: logSnapshots,
             progress: progressSnapshot,
-            gitBranch: gitBranchSnapshot
+            gitBranch: gitBranchSnapshot,
+            lastActivityAt: lastActivityAt
         )
     }
 
@@ -338,6 +339,7 @@ extension Workspace {
         setCustomDescription(snapshot.customDescription)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        lastActivityAt = snapshot.lastActivityAt ?? Date()
 
         // Status entries and agent PIDs are ephemeral runtime state tied to running
         // processes (e.g. claude_code "Running"). Don't restore them across app
@@ -6486,6 +6488,7 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var customDescription: String?
     @Published var isPinned: Bool = false
     @Published var customColor: String?  // hex string, e.g. "#C0392B"
+    @Published var lastActivityAt: Date?
     @Published var currentDirectory: String
     private(set) var preferredBrowserProfileID: UUID?
 
@@ -6658,6 +6661,7 @@ final class Workspace: Identifiable, ObservableObject {
             sidebarObservationSignal($remoteConnectionDetail),
             sidebarObservationSignal($activeRemoteTerminalSessionCount),
             sidebarObservationSignal($listeningPorts),
+            sidebarObservationSignal($lastActivityAt),
         ]
 
         return Publishers.MergeMany(publishers).eraseToAnyPublisher()
@@ -6862,6 +6866,7 @@ final class Workspace: Identifiable, ObservableObject {
         self.title = title
         self.customTitle = nil
         self.customDescription = nil
+        self.lastActivityAt = Date()
 
         let trimmedWorkingDirectory = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasWorkingDirectory = !trimmedWorkingDirectory.isEmpty

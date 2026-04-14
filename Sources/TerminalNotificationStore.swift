@@ -905,6 +905,12 @@ final class TerminalNotificationStore: ObservableObject {
         cooldownKey: String? = nil,
         cooldownInterval: TimeInterval? = nil
     ) {
+        // Update workspace activity timestamp before cooldown guard — even throttled
+        // notifications indicate real background activity.
+        if let workspace = AppDelegate.shared?.tabManager?.tabs.first(where: { $0.id == tabId }) {
+            workspace.lastActivityAt = Date()
+        }
+
         let now = Date()
         let resolvedCooldownInterval: TimeInterval?
         if let cooldownInterval, cooldownInterval.isFinite, cooldownInterval > 0 {
