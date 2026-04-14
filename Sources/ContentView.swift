@@ -12581,6 +12581,11 @@ private struct TabItemView: View, Equatable {
         draggedTabId == tab.id
     }
 
+    private var isIdle: Bool {
+        guard let lastActivity = tab.lastActivityAt else { return true }
+        return -lastActivity.timeIntervalSinceNow > 3600  // 1 hour
+    }
+
     private var sidebarShortcutHintXOffset: Double {
         settings.sidebarShortcutHintXOffset
     }
@@ -13231,7 +13236,8 @@ private struct TabItemView: View, Equatable {
             }
         }
         .contentShape(Rectangle())
-        .opacity(isBeingDragged ? 0.6 : 1)
+        .opacity(isBeingDragged ? 0.6 : (isIdle && !isActive && !isHovering && !isMultiSelected ? 0.55 : 1.0))
+        .animation(.easeInOut(duration: 0.3), value: isIdle)
         .overlay {
             MiddleClickCapture {
                 #if DEBUG
