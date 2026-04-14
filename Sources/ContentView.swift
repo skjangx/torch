@@ -13610,7 +13610,7 @@ private struct TabItemView: View, Equatable {
         switch activeTabIndicatorStyle {
         case .leftRail:
             if isActive        { return Color(nsColor: selectionBackgroundColor) }
-            if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isMultiSelected { return cmuxAccentColor().opacity(0.08) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         case .solidFill:
@@ -13619,12 +13619,12 @@ private struct TabItemView: View, Equatable {
                 if isMultiSelected { return custom.opacity(0.35) }
                 return custom.opacity(0.7)
             }
-            if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isMultiSelected { return cmuxAccentColor().opacity(0.08) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         case .swatch:
             if isActive        { return softSelectionColor }
-            if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
+            if isMultiSelected { return cmuxAccentColor().opacity(0.08) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         }
