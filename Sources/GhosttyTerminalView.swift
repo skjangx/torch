@@ -6518,10 +6518,12 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 #if DEBUG
             let dismissNotificationStart = ProcessInfo.processInfo.systemUptime
 #endif
-            AppDelegate.shared?.tabManager?.dismissNotificationOnDirectInteraction(
+            let tabManager = AppDelegate.shared?.tabManager
+            tabManager?.dismissNotificationOnDirectInteraction(
                 tabId: terminalSurface.tabId,
                 surfaceId: terminalSurface.id
             )
+            tabManager?.tabs.first(where: { $0.id == terminalSurface.tabId })?.hasRecentTerminalInput = true
 #if DEBUG
             dismissNotificationMs = (ProcessInfo.processInfo.systemUptime - dismissNotificationStart) * 1000.0
 #endif
@@ -11884,6 +11886,9 @@ extension GhosttyNSView: NSTextInputClient {
         guard !sanitizedChars.isEmpty else { return }
 
         // Otherwise send directly to the terminal
+        if let terminalSurface {
+            AppDelegate.shared?.tabManager?.tabs.first(where: { $0.id == terminalSurface.tabId })?.hasRecentTerminalInput = true
+        }
         sendTextToSurface(
             sanitizedChars,
             preserveLiteralEscape: !isExternalCommittedText

@@ -12502,14 +12502,18 @@ private final class SidebarTabItemContextMenuState: ObservableObject {
 private func relativeActivityString(from date: Date?) -> String? {
     guard let date else { return nil }
     let seconds = -date.timeIntervalSinceNow
-    if seconds < 60 { return nil }        // < 1 min → hide
-    if seconds < 3600 { return "\(Int(seconds / 60))m" }
-    if seconds < 86400 { return "\(Int(seconds / 3600))h" }
-    return "\(Int(seconds / 86400))d"
+    if seconds < 60 { return "Now" }
+    let minutes = Int(seconds / 60)
+    if minutes < 60 { return "\(minutes)m ago" }
+    let hours = Int(seconds / 3600)
+    if hours < 24 { return "\(hours)h ago" }
+    return "\(Int(seconds / 86400))d ago"
 }
 
 private struct TabItemView: View, Equatable {
     private static let workspaceObservationCoalesceInterval: RunLoop.SchedulerTimeType.Stride = .milliseconds(40)
+    private static let activityChipRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    private static let terminalInputFlushTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     // Closures, Bindings, and object references are excluded from ==
     // because they're recreated every parent eval but don't affect rendering.
@@ -12949,13 +12953,6 @@ private struct TabItemView: View, Equatable {
 
                 Spacer(minLength: 0)
 
-                if !isActive, let activityText = relativeActivityString(from: tab.lastActivityAt) {
-                    Text(activityText)
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.secondary.opacity(0.6))
-                        .transition(.opacity)
-                }
-
                 ZStack(alignment: .trailing) {
                     Button(action: {
                         #if DEBUG
@@ -12998,6 +12995,13 @@ private struct TabItemView: View, Equatable {
                 }
                 .animation(.easeInOut(duration: 0.14), value: showsModifierShortcutHints || alwaysShowShortcutHints)
                 .frame(width: trailingAccessoryWidth, height: 16, alignment: .trailing)
+            }
+
+            if let activityLabel = relativeActivityString(from: tab.lastActivityAt) {
+                Text(activityLabel)
+                    .font(.system(size: 9, weight: .medium, design: activityLabel == "Now" ? .default : .monospaced))
+                    .foregroundColor(Color.secondary.opacity(activityLabel == "Now" ? 0.4 : 0.6))
+                    .transition(.opacity)
             }
 
             if let description = tab.customDescription {
@@ -13280,6 +13284,15 @@ private struct TabItemView: View, Equatable {
             )
 #endif
             scheduleWorkspaceObservationInvalidation()
+        }
+        .onReceive(Self.activityChipRefreshTimer) { _ in
+            scheduleWorkspaceObservationInvalidation()
+        }
+        .onReceive(Self.terminalInputFlushTimer) { _ in
+            if tab.hasRecentTerminalInput {
+                tab.hasRecentTerminalInput = false
+                tab.lastActivityAt = Date()
+            }
         }
         .onDrag {
             #if DEBUG

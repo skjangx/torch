@@ -922,9 +922,6 @@ class TabManager: ObservableObject {
         }
         didSet {
             guard selectedTabId != oldValue else { return }
-            if let selectedTabId, let workspace = tabs.first(where: { $0.id == selectedTabId }) {
-                workspace.lastActivityAt = Date()
-            }
             sentryBreadcrumb("workspace.switch", data: [
                 "tabCount": tabs.count
             ])

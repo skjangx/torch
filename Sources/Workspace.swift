@@ -6489,6 +6489,8 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var isPinned: Bool = false
     @Published var customColor: String?  // hex string, e.g. "#C0392B"
     @Published var lastActivityAt: Date?
+    /// Set by terminal keyDown/insertText, flushed to `lastActivityAt` every 5s.
+    var hasRecentTerminalInput = false
     @Published var currentDirectory: String
     private(set) var preferredBrowserProfileID: UUID?
 
