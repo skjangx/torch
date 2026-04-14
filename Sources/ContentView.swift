@@ -12648,7 +12648,7 @@ private struct TabItemView: View, Equatable {
     }
 
     private var usesInvertedActiveForeground: Bool {
-        isActive
+        false  // Soft tint selection — text stays natural colors
     }
 
     private var activePrimaryTextColor: Color {
@@ -13601,6 +13601,11 @@ private struct TabItemView: View, Equatable {
         return cmuxAccentNSColor(for: colorScheme)
     }
 
+    /// Soft 12% tint for active selection — respects custom selection color when set.
+    private var softSelectionColor: Color {
+        Color(nsColor: selectionBackgroundColor).opacity(0.12)
+    }
+
     private var backgroundColor: Color {
         switch activeTabIndicatorStyle {
         case .leftRail:
@@ -13618,7 +13623,7 @@ private struct TabItemView: View, Equatable {
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
         case .swatch:
-            if isActive        { return Color(nsColor: selectionBackgroundColor) }
+            if isActive        { return softSelectionColor }
             if isMultiSelected { return cmuxAccentColor().opacity(0.25) }
             if isHovering      { return Color.white.opacity(0.04) }
             return Color.clear
@@ -14341,7 +14346,7 @@ private struct SidebarMetadataRows: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(isActive ? activeSecondaryTextColor : .secondary.opacity(0.9))
+                .foregroundColor(.secondary.opacity(0.9))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -14494,7 +14499,7 @@ private struct SidebarMetadataMarkdownBlocks: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(isActive ? .white.opacity(0.65) : .secondary.opacity(0.9))
+                .foregroundColor(.secondary.opacity(0.9))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
