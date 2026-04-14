@@ -12499,6 +12499,15 @@ private final class SidebarTabItemContextMenuState: ObservableObject {
     var hasDeferredWorkspaceObservationInvalidation = false
 }
 
+private func relativeActivityString(from date: Date?) -> String? {
+    guard let date else { return nil }
+    let seconds = -date.timeIntervalSinceNow
+    if seconds < 60 { return nil }        // < 1 min → hide
+    if seconds < 3600 { return "\(Int(seconds / 60))m" }
+    if seconds < 86400 { return "\(Int(seconds / 3600))h" }
+    return "\(Int(seconds / 86400))d"
+}
+
 private struct TabItemView: View, Equatable {
     private static let workspaceObservationCoalesceInterval: RunLoop.SchedulerTimeType.Stride = .milliseconds(40)
 
@@ -12939,6 +12948,13 @@ private struct TabItemView: View, Equatable {
                     .styledTooltip(title: tab.title, path: shortenedPath(tab.currentDirectory))
 
                 Spacer(minLength: 0)
+
+                if !isActive, let activityText = relativeActivityString(from: tab.lastActivityAt) {
+                    Text(activityText)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundColor(Color.secondary.opacity(0.6))
+                        .transition(.opacity)
+                }
 
                 ZStack(alignment: .trailing) {
                     Button(action: {
