@@ -12913,6 +12913,10 @@ private struct TabItemView: View, Equatable {
                     Circle()
                         .fill(activeUnreadBadgeFillColor)
                         .frame(width: 6, height: 6)
+                        .overlay(
+                            Circle()
+                                .stroke(activeUnreadBadgeFillColor.opacity(0.35), lineWidth: 3)
+                        )
                         .transition(.scale.combined(with: .opacity))
                 }
 
