@@ -987,6 +987,11 @@ private final class PassthroughWindowOverlayContainerView: NSView {
     }
 }
 
+/// Shortens a directory path for display by replacing home directory with ~.
+private func shortenedPath(_ path: String) -> String {
+    (path as NSString).abbreviatingWithTildeInPath
+}
+
 #if DEBUG
 private func debugCommandPaletteWindowSummary(_ window: NSWindow?) -> String {
     guard let window else { return "nil" }
@@ -12944,6 +12949,7 @@ private struct TabItemView: View, Equatable {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .layoutPriority(1)
+                    .styledTooltip(title: tab.title, path: shortenedPath(tab.currentDirectory))
 
                 Spacer(minLength: 0)
 
